@@ -6,6 +6,7 @@ import helmet from "helmet";
 import { Server } from "socket.io";
 import { PrismaClient } from "../generated/prisma";
 import authRoutes from "./routes/auth";
+import gameRoutes from "./routes/games";
 
 const app = express();
 const httpServer = createServer(app);
@@ -30,6 +31,7 @@ app.use(express.json());
 
 // Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/games", gameRoutes);
 
 // Basic route
 app.get("/", (req, res) => {
@@ -50,3 +52,6 @@ const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
 	console.log(`Server running on port ${PORT}`);
 });
+
+// Export io for use in other files
+export { io };

@@ -11,19 +11,6 @@ import {
 	verifyRefreshToken,
 } from "../utils/auth";
 
-// Extend Express Request type
-declare global {
-	namespace Express {
-		interface Request {
-			user?: {
-				userId: string;
-				username: string;
-				isGuest: boolean;
-			};
-		}
-	}
-}
-
 export const register = async (req: Request, res: Response): Promise<void> => {
 	try {
 		const { email, username, password, locale = "en" } = req.body;
