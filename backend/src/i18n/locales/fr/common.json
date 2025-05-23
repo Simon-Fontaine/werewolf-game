@@ -1,0 +1,26 @@
+{
+	"errors": {
+		"unauthorized": "Non autorisé",
+		"invalidCredentials": "Identifiants invalides",
+		"userExists": "Un utilisateur avec cet email ou nom d'utilisateur existe déjà",
+		"gameNotFound": "Partie introuvable",
+		"gameFull": "La partie est complète",
+		"gameStarted": "La partie a déjà commencé",
+		"minPlayersRequired": "Il faut au moins {{min}} joueurs pour commencer",
+		"onlyHostCanStart": "Seul l'hôte peut lancer la partie",
+		"internalError": "Erreur interne du serveur"
+	},
+	"success": {
+		"loggedOut": "Déconnexion réussie"
+	},
+	"game": {
+		"events": {
+			"playerJoined": "{{player}} a rejoint la partie",
+			"playerLeft": "{{player}} a quitté la partie",
+			"gameStarted": "La partie a commencé !",
+			"nightFalls": "La nuit tombe sur le village...",
+			"playerKilled": "{{player}} a été tué pendant la nuit",
+			"playerEliminated": "{{player}} a été éliminé par vote"
+		}
+	}
+}

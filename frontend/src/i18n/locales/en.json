@@ -1,0 +1,160 @@
+{
+	"common": {
+		"appName": "Werewolf Game",
+		"loading": "Loading...",
+		"error": "Error",
+		"success": "Success",
+		"cancel": "Cancel",
+		"confirm": "Confirm",
+		"save": "Save",
+		"delete": "Delete",
+		"back": "Back",
+		"next": "Next",
+		"close": "Close",
+		"or": "or"
+	},
+	"auth": {
+		"login": "Login",
+		"signup": "Sign Up",
+		"logout": "Logout",
+		"playAsGuest": "Play as Guest",
+		"username": "Username",
+		"email": "Email",
+		"password": "Password",
+		"confirmPassword": "Confirm Password",
+		"rememberMe": "Remember me",
+		"forgotPassword": "Forgot password?",
+		"createAccount": "Create an account",
+		"alreadyHaveAccount": "Already have an account?",
+		"dontHaveAccount": "Don't have an account?",
+		"continueAsGuest": "Continue as guest",
+		"guestNotice": "Playing as guest. Your game history won't be saved.",
+		"convertAccount": "Convert to full account",
+		"errors": {
+			"invalidCredentials": "Invalid username or password",
+			"usernameTaken": "Username already taken",
+			"emailTaken": "Email already in use",
+			"weakPassword": "Password must be at least 8 characters",
+			"passwordMismatch": "Passwords don't match"
+		}
+	},
+	"navigation": {
+		"home": "Home",
+		"createGame": "Create Game",
+		"joinGame": "Join Game",
+		"myGames": "My Games",
+		"profile": "Profile",
+		"settings": "Settings",
+		"about": "About",
+		"rules": "Game Rules",
+		"language": "Language"
+	},
+	"home": {
+		"welcome": "Welcome to Werewolf",
+		"subtitle": "The classic social deduction game",
+		"createGameButton": "Create New Game",
+		"joinGameButton": "Join Existing Game",
+		"howToPlay": "How to Play",
+		"quickStart": "Quick Start"
+	},
+	"game": {
+		"lobby": {
+			"title": "Game Lobby",
+			"waitingForPlayers": "Waiting for players...",
+			"playerCount": "{count, plural, =0 {No players} =1 {1 player} other {# players}}",
+			"minPlayersRequired": "Minimum {min} players required to start",
+			"gameCode": "Game Code",
+			"shareCode": "Share this code with friends:",
+			"copyCode": "Copy Code",
+			"codeCopied": "Code copied!",
+			"startGame": "Start Game",
+			"leaveGame": "Leave Game",
+			"players": "Players",
+			"settings": "Game Settings",
+			"host": "Host"
+		},
+		"createGame": {
+			"title": "Create New Game",
+			"settings": "Game Settings",
+			"minPlayers": "Minimum Players",
+			"maxPlayers": "Maximum Players",
+			"discussionTime": "Discussion Time (seconds)",
+			"votingTime": "Voting Time (seconds)",
+			"roles": "Roles",
+			"create": "Create Game"
+		},
+		"joinGame": {
+			"title": "Join Game",
+			"enterCode": "Enter game code",
+			"codePlaceholder": "e.g. ABC123",
+			"join": "Join",
+			"invalidCode": "Invalid game code",
+			"gameNotFound": "Game not found",
+			"gameFull": "Game is full",
+			"gameStarted": "Game has already started"
+		},
+		"phases": {
+			"waiting": "Waiting",
+			"night": "Night",
+			"discussion": "Discussion",
+			"voting": "Voting",
+			"execution": "Execution"
+		},
+		"roles": {
+			"villager": {
+				"name": "Villager",
+				"description": "A regular townsperson trying to find the werewolves"
+			},
+			"werewolf": {
+				"name": "Werewolf",
+				"description": "Eliminate villagers at night without being caught"
+			},
+			"seer": {
+				"name": "Seer",
+				"description": "Can check one player's role each night"
+			},
+			"doctor": {
+				"name": "Doctor",
+				"description": "Can protect one player from werewolves each night"
+			},
+			"hunter": {
+				"name": "Hunter",
+				"description": "Can shoot someone when eliminated"
+			},
+			"witch": {
+				"name": "Witch",
+				"description": "Has one potion to save and one to kill"
+			}
+		},
+		"actions": {
+			"vote": "Vote",
+			"skip": "Skip Vote",
+			"use": "Use",
+			"save": "Save",
+			"kill": "Kill",
+			"check": "Check Role",
+			"protect": "Protect",
+			"shoot": "Shoot"
+		},
+		"messages": {
+			"nightFalls": "Night falls on the village...",
+			"dayBreaks": "The sun rises. The village awakens...",
+			"discussionTime": "Discuss who might be the werewolf",
+			"votingTime": "Time to vote for elimination",
+			"playerEliminated": "{player} has been eliminated",
+			"playerKilled": "{player} was killed during the night",
+			"noOneKilled": "No one was killed during the night",
+			"gameOver": "Game Over",
+			"villageWins": "The village wins!",
+			"werewolvesWin": "The werewolves win!",
+			"yourRole": "Your role is: {role}"
+		}
+	},
+	"errors": {
+		"generic": "Something went wrong",
+		"networkError": "Network error. Please check your connection.",
+		"serverError": "Server error. Please try again later.",
+		"unauthorized": "You must be logged in to do that",
+		"forbidden": "You don't have permission to do that"
+	}
+}

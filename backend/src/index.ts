@@ -5,6 +5,7 @@ import express from "express";
 import helmet from "helmet";
 import { Server } from "socket.io";
 import { PrismaClient } from "../generated/prisma";
+import i18next, { i18nMiddleware } from "./i18n";
 import { authenticateSocket } from "./middleware/socketAuth";
 import authRoutes from "./routes/auth";
 import gameRoutes from "./routes/games";
@@ -30,6 +31,7 @@ app.use(
 	}),
 );
 app.use(express.json());
+app.use(i18nMiddleware);
 
 // Routes
 app.use("/api/auth", authRoutes);
@@ -52,5 +54,5 @@ httpServer.listen(PORT, () => {
 	console.log(`Server running on port ${PORT}`);
 });
 
-// Export io for use in other files
-export { io };
+// Export io and i18next for use in other files
+export { io, i18next };

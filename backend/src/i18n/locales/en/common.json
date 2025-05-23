@@ -1,0 +1,26 @@
+{
+	"errors": {
+		"unauthorized": "Unauthorized",
+		"invalidCredentials": "Invalid credentials",
+		"userExists": "User with this email or username already exists",
+		"gameNotFound": "Game not found",
+		"gameFull": "Game is full",
+		"gameStarted": "Game already started",
+		"minPlayersRequired": "Need at least {{min}} players to start",
+		"onlyHostCanStart": "Only the host can start the game",
+		"internalError": "Internal server error"
+	},
+	"success": {
+		"loggedOut": "Logged out successfully"
+	},
+	"game": {
+		"events": {
+			"playerJoined": "{{player}} joined the game",
+			"playerLeft": "{{player}} left the game",
+			"gameStarted": "Game has started!",
+			"nightFalls": "Night falls on the village...",
+			"playerKilled": "{{player}} was killed during the night",
+			"playerEliminated": "{{player}} was eliminated by vote"
+		}
+	}
+}
