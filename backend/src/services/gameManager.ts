@@ -1,4 +1,4 @@
-import type { GameSettings } from "@shared/types";
+import { type GameSettings, Role, type RoleDistribution } from "@shared/types";
 import {
 	type Game,
 	type GamePlayer,
@@ -207,6 +207,110 @@ class GameManager {
 			// TODO: Game in progress - mark player as disconnected or handle differently
 			console.log(`Player ${userId} left active game ${gameId}`);
 		}
+	}
+
+	async startGame(gameId: string): Promise<GameWithPlayers> {
+		const game = await this.getGame(gameId);
+
+		if (!game) {
+			throw new Error("Game not found");
+		}
+
+		if (game.status !== "LOBBY") {
+			throw new Error("Game already started");
+		}
+
+		const settings = game.settings as unknown as GameSettings;
+		if (game.players.length < settings.minPlayers) {
+			throw new Error(`Need at least ${settings.minPlayers} players`);
+		}
+
+		// Assign roles
+		const assignedRoles = this.assignRoles(game.players.length, settings.roles);
+
+		// Shuffle roles
+		for (let i = assignedRoles.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[assignedRoles[i], assignedRoles[j]] = [
+				assignedRoles[j],
+				assignedRoles[i],
+			];
+		}
+
+		// Update players with roles
+		const updatePromises = game.players.map((player, index) =>
+			prisma.gamePlayer.update({
+				where: { id: player.id },
+				data: { role: assignedRoles[index] },
+			}),
+		);
+
+		await Promise.all(updatePromises);
+
+		// Update game status
+		const updatedGame = await prisma.game.update({
+			where: { id: gameId },
+			data: {
+				status: "IN_PROGRESS",
+				phase: "NIGHT",
+				dayNumber: 1,
+				startedAt: new Date(),
+			},
+			include: {
+				players: {
+					include: {
+						user: true,
+					},
+				},
+			},
+		});
+
+		// Create game started event
+		await prisma.gameEvent.create({
+			data: {
+				gameId,
+				type: "GAME_STARTED",
+				phase: "NIGHT",
+				dayNumber: 1,
+				data: {
+					playerCount: game.players.length,
+					roles: assignedRoles,
+				},
+			},
+		});
+
+		return updatedGame;
+	}
+
+	private assignRoles(
+		playerCount: number,
+		roleConfig: RoleDistribution,
+	): Role[] {
+		const roles: Role[] = [];
+
+		// Add configured roles
+		for (const [role, count] of Object.entries(roleConfig)) {
+			for (let i = 0; i < count; i++) {
+				roles.push(role as Role);
+			}
+		}
+
+		// Fill remaining slots with villagers
+		while (roles.length < playerCount) {
+			roles.push(Role.VILLAGER);
+		}
+
+		// Remove excess roles if needed (shouldn't happen with proper config)
+		while (roles.length > playerCount) {
+			const villagerIndex = roles.lastIndexOf(Role.VILLAGER);
+			if (villagerIndex !== -1) {
+				roles.splice(villagerIndex, 1);
+			} else {
+				roles.pop();
+			}
+		}
+
+		return roles;
 	}
 
 	async getGame(gameId: string): Promise<GameWithPlayers | null> {

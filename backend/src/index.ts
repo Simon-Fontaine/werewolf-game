@@ -5,8 +5,10 @@ import express from "express";
 import helmet from "helmet";
 import { Server } from "socket.io";
 import { PrismaClient } from "../generated/prisma";
+import { authenticateSocket } from "./middleware/socketAuth";
 import authRoutes from "./routes/auth";
 import gameRoutes from "./routes/games";
+import { setupGameSocket } from "./sockets/gameSocket";
 
 const app = express();
 const httpServer = createServer(app);
@@ -38,14 +40,11 @@ app.get("/", (req, res) => {
 	res.json({ message: "Werewolf Game API" });
 });
 
-// Socket.io connection
-io.on("connection", (socket) => {
-	console.log("User connected:", socket.id);
+// Socket.io authentication
+io.use(authenticateSocket);
 
-	socket.on("disconnect", () => {
-		console.log("User disconnected:", socket.id);
-	});
-});
+// Setup game socket handlers
+setupGameSocket(io);
 
 const PORT = process.env.PORT || 3001;
 
