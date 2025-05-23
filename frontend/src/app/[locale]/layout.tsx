@@ -1,3 +1,4 @@
+import { Toaster } from "@/components/ui/toaster";
 import { type Locale, locales } from "@/i18n/request";
 import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
@@ -43,6 +44,7 @@ export default async function LocaleLayout({
 			>
 				<NextIntlClientProvider messages={messages}>
 					{children}
+					<Toaster />
 				</NextIntlClientProvider>
 			</body>
 		</html>

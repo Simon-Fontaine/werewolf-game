@@ -12,6 +12,7 @@
 		"next": "Suivant",
 		"close": "Fermer",
 		"retry": "Réessayer",
+		"you": "Vous",
 		"or": "ou"
 	},
 	"auth": {
@@ -60,6 +61,12 @@
 		"quickStart": "Démarrage rapide"
 	},
 	"game": {
+		"nightAction": "Action de Nuit",
+		"actionCompleted": "Action Complétée",
+		"voting": {
+			"title": "Voter pour l'Élimination"
+		},
+		"voteCast": "Vote Enregistré",
 		"lobby": {
 			"title": "Salon de jeu",
 			"waitingForPlayers": "En attente de joueurs...",
@@ -139,6 +146,7 @@
 			"shoot": "Tirer"
 		},
 		"messages": {
+			"villagerNight": "Dormez bien. Les loups-garous rôdent...",
 			"nightFalls": "La nuit tombe sur le village...",
 			"dayBreaks": "Le soleil se lève. Le village se réveille...",
 			"discussionTime": "Discutez pour trouver qui est le loup-garou",

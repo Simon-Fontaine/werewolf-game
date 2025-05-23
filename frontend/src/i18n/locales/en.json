@@ -12,6 +12,7 @@
 		"next": "Next",
 		"close": "Close",
 		"retry": "Try again",
+		"you": "You",
 		"or": "or"
 	},
 	"auth": {
@@ -60,6 +61,12 @@
 		"quickStart": "Quick Start"
 	},
 	"game": {
+		"nightAction": "Night Action",
+		"actionCompleted": "Action Completed",
+		"voting": {
+			"title": "Vote for Elimination"
+		},
+		"voteCast": "Vote Cast",
 		"lobby": {
 			"title": "Game Lobby",
 			"waitingForPlayers": "Waiting for players...",
@@ -139,6 +146,7 @@
 			"shoot": "Shoot"
 		},
 		"messages": {
+			"villagerNight": "Sleep tight. The werewolves are prowling...",
 			"nightFalls": "Night falls on the village...",
 			"dayBreaks": "The sun rises. The village awakens...",
 			"discussionTime": "Discuss who might be the werewolf",
