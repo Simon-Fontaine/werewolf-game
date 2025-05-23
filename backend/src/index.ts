@@ -5,6 +5,7 @@ import express from "express";
 import helmet from "helmet";
 import { Server } from "socket.io";
 import { PrismaClient } from "../generated/prisma";
+import authRoutes from "./routes/auth";
 
 const app = express();
 const httpServer = createServer(app);
@@ -26,6 +27,9 @@ app.use(
 	}),
 );
 app.use(express.json());
+
+// Routes
+app.use("/api/auth", authRoutes);
 
 // Basic route
 app.get("/", (req, res) => {
