@@ -3,9 +3,37 @@
 	"version": "1.0.0",
 	"private": true,
 	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1"
+		"dev": "nodemon src/index.ts",
+		"build": "tsc",
+		"start": "node dist/index.js",
+		"prisma:generate": "prisma generate",
+		"prisma:migrate": "prisma migrate dev",
+		"prisma:studio": "prisma studio"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "1.9.4"
+		"@biomejs/biome": "1.9.4",
+		"@types/bcryptjs": "^2.4.6",
+		"@types/cors": "^2.8.18",
+		"@types/express": "^5.0.2",
+		"@types/jsonwebtoken": "^9.0.9",
+		"@types/node": "^22.15.21",
+		"nodemon": "^3.1.10",
+		"ts-node": "^10.9.2",
+		"tsconfig-paths": "^4.2.0",
+		"typescript": "^5.8.3"
+	},
+	"dependencies": {
+		"@prisma/client": "^6.8.2",
+		"bcryptjs": "^3.0.2",
+		"cors": "^2.8.5",
+		"dotenv": "^16.5.0",
+		"express": "^5.1.0",
+		"helmet": "^8.1.0",
+		"i18next": "^25.2.0",
+		"i18next-fs-backend": "^2.6.0",
+		"i18next-http-middleware": "^3.7.4",
+		"jsonwebtoken": "^9.0.2",
+		"prisma": "^6.8.2",
+		"socket.io": "^4.8.1"
 	}
 }
