@@ -11,6 +11,7 @@
 		"back": "Retour",
 		"next": "Suivant",
 		"close": "Fermer",
+		"retry": "Réessayer",
 		"or": "ou"
 	},
 	"auth": {
@@ -30,6 +31,7 @@
 		"continueAsGuest": "Continuer en tant qu'invité",
 		"guestNotice": "Vous jouez en tant qu'invité. Votre historique ne sera pas sauvegardé.",
 		"convertAccount": "Convertir en compte complet",
+		"creatingGuestAccount": "Création du compte invité...",
 		"errors": {
 			"invalidCredentials": "Nom d'utilisateur ou mot de passe invalide",
 			"usernameTaken": "Nom d'utilisateur déjà pris",

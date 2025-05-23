@@ -1,4 +1,3 @@
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 
@@ -14,7 +13,6 @@ export default function HomePage() {
 				<p className="mb-12 text-center text-xl text-muted-foreground">
 					{t("home.subtitle")}
 				</p>
-				<LanguageSwitcher />
 
 				<div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
 					<Link
