@@ -1,4 +1,3 @@
-import axios from "axios";
 import {
 	type ApiResponse,
 	GamePhase,
@@ -7,7 +6,8 @@ import {
 	type Player,
 	type Role,
 	SocketEvent,
-} from "shared";
+} from "@shared/types";
+import axios from "axios";
 import { create } from "zustand";
 import { useAuthStore } from "./authStore";
 
