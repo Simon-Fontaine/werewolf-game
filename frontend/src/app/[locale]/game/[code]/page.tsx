@@ -10,18 +10,26 @@ import {
 } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useSocket } from "@/hooks/useSocket";
+import { requireAuth } from "@/lib/auth-utils";
 import { useAuthStore } from "@/stores/authStore";
 import { useGameStore } from "@/stores/gameStore";
-import { type GameState, type Player, SocketEvent } from "@shared/types";
+import {
+	type GameState,
+	type Player,
+	type Role,
+	SocketEvent,
+} from "@shared/types";
 import axios from "axios";
 import { Copy, Crown, Loader2, Users } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
+import { useParams, usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export default function GameLobbyPage() {
 	const t = useTranslations();
 	const router = useRouter();
+	const pathname = usePathname();
+	const locale = useLocale();
 	const params = useParams();
 	const gameCode = params.code as string;
 	const { toast } = useToast();
@@ -33,16 +41,17 @@ export default function GameLobbyPage() {
 
 	const [isStarting, setIsStarting] = useState(false);
 	const [isInitializing, setIsInitializing] = useState(true);
+	const hasInitialized = useRef(false);
 
 	// Initialize game data
 	const initializeGame = useCallback(async () => {
-		if (!user || !accessToken) {
-			router.push("/auth/guest");
+		if (!user || !accessToken || hasInitialized.current) {
 			return;
 		}
 
 		try {
 			setIsInitializing(true);
+			hasInitialized.current = true;
 
 			// Fetch game data from API
 			const response = await axios.get(
@@ -65,7 +74,7 @@ export default function GameLobbyPage() {
 						description: t("errors.unauthorized"),
 						variant: "destructive",
 					});
-					router.push("/");
+					router.push(`/${locale}`);
 					return;
 				}
 
@@ -82,9 +91,11 @@ export default function GameLobbyPage() {
 				});
 
 				// If game already started, redirect to play page
-				if (game.status === "IN_PROGRESS" && currentPlayer.role) {
-					setGameState({ myRole: currentPlayer.role });
-					router.push(`/game/${gameCode}/play`);
+				if (game.status === "IN_PROGRESS") {
+					if (currentPlayer.role) {
+						setGameState({ myRole: currentPlayer.role });
+					}
+					router.push(`/${locale}/game/${gameCode}/play`);
 					return;
 				}
 			}
@@ -95,20 +106,26 @@ export default function GameLobbyPage() {
 				description: t("errors.gameNotFound"),
 				variant: "destructive",
 			});
-			router.push("/");
+			router.push(`/${locale}`);
 		} finally {
 			setIsInitializing(false);
 		}
-	}, [user, accessToken, gameCode, router, toast, t, setGameState]);
+	}, [user, accessToken, gameCode, router, toast, t, setGameState, locale]);
 
-	// Initialize on mount
+	// Check authentication
 	useEffect(() => {
-		initializeGame();
-	}, [initializeGame]);
+		if (!requireAuth(user, router, pathname, locale)) {
+			return;
+		}
+
+		if (user && accessToken && !hasInitialized.current) {
+			initializeGame();
+		}
+	}, [user, accessToken, initializeGame, router, pathname, locale]);
 
 	// Setup socket listeners
 	useEffect(() => {
-		if (!socket || isInitializing) return;
+		if (!socket || isInitializing || !user) return;
 
 		console.log("Setting up socket listeners");
 
@@ -138,13 +155,16 @@ export default function GameLobbyPage() {
 		};
 
 		// Listen for role assignment
-		const handleRoleAssigned = (data: { players: Player[] } & Player) => {
+		const handleRoleAssigned = (data: { players: Player[]; role: Role }) => {
 			console.log("Role assigned:", data.role);
 			setGameState({
 				myRole: data.role,
 				players: data.players,
 			});
-			router.push(`/game/${gameCode}/play`);
+			// Give a small delay to ensure state is updated
+			setTimeout(() => {
+				router.push(`/${locale}/game/${gameCode}/play`);
+			}, 100);
 		};
 
 		// Listen for errors
@@ -169,7 +189,17 @@ export default function GameLobbyPage() {
 			socket.off("role-assigned", handleRoleAssigned);
 			socket.off("error", handleError);
 		};
-	}, [socket, gameCode, isInitializing, router, toast, t, setGameState]);
+	}, [
+		socket,
+		gameCode,
+		isInitializing,
+		router,
+		toast,
+		t,
+		setGameState,
+		user,
+		locale,
+	]);
 
 	const handleStartGame = () => {
 		if (!socket || !isHost) return;
@@ -182,7 +212,7 @@ export default function GameLobbyPage() {
 			socket.emit(SocketEvent.LEAVE_GAME);
 		}
 		reset();
-		router.push("/");
+		router.push(`/${locale}`);
 	};
 
 	const copyGameCode = () => {
@@ -191,6 +221,11 @@ export default function GameLobbyPage() {
 			title: t("game.lobby.codeCopied"),
 		});
 	};
+
+	// Don't render if not authenticated
+	if (!user) {
+		return null;
+	}
 
 	if (isInitializing) {
 		return (

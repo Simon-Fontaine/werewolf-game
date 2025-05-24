@@ -2,28 +2,43 @@
 
 import { useAuthStore } from "@/stores/authStore";
 import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef } from "react";
 
 export default function GuestAuthPage() {
 	const t = useTranslations();
 	const locale = useLocale();
 	const router = useRouter();
+	const searchParams = useSearchParams();
 	const { createGuest, user, isLoading, error } = useAuthStore();
 
-	useEffect(() => {
-		if (!user) {
-			createGuest(locale);
+	const hasInitialized = useRef(false);
+
+	const redirect = searchParams.get("redirect") || `/${locale}`;
+
+	const initializeGuest = useCallback(async () => {
+		if (hasInitialized.current || user) return;
+		hasInitialized.current = true;
+
+		try {
+			await createGuest(locale);
+		} catch (err) {
+			// Reset if failed
+			hasInitialized.current = false;
 		}
-	}, [user, createGuest, locale]);
+	}, [createGuest, locale, user]);
 
 	useEffect(() => {
-		if (user) {
-			router.push(`/${locale}`);
-		}
-	}, [user, router, locale]);
+		initializeGuest();
+	}, [initializeGuest]);
 
-	if (isLoading) {
+	useEffect(() => {
+		if (user && !isLoading) {
+			router.push(redirect);
+		}
+	}, [user, isLoading, router, redirect]);
+
+	if (isLoading || !user) {
 		return (
 			<div className="flex min-h-screen items-center justify-center">
 				<p>{t("common.loading")}</p>
@@ -38,7 +53,10 @@ export default function GuestAuthPage() {
 					<p className="text-destructive">{error}</p>
 					<button
 						type="button"
-						onClick={() => createGuest(locale)}
+						onClick={() => {
+							hasInitialized.current = false;
+							initializeGuest();
+						}}
 						className="mt-4 underline"
 					>
 						{t("common.retry")}

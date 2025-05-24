@@ -1,3 +1,4 @@
+// frontend/src/app/[locale]/game/[code]/play/page.tsx
 "use client";
 
 import { ActionPanel } from "@/components/game/ActionPanel";
@@ -7,6 +8,7 @@ import { PhaseDisplay } from "@/components/game/PhaseDisplay";
 import { RoleCard } from "@/components/game/RoleCard";
 import { VotingInterface } from "@/components/game/VotingInterface";
 import { useSocket } from "@/hooks/useSocket";
+import { requireAuth } from "@/lib/auth-utils";
 import { useAuthStore } from "@/stores/authStore";
 import { useGameStore } from "@/stores/gameStore";
 import {
@@ -17,13 +19,15 @@ import {
 } from "@shared/types";
 import axios from "axios";
 import { Loader2 } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
+import { useParams, usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export default function GamePlayPage() {
 	const t = useTranslations();
 	const router = useRouter();
+	const pathname = usePathname();
+	const locale = useLocale();
 	const params = useParams();
 	const gameCode = params.code as string;
 
@@ -31,16 +35,17 @@ export default function GamePlayPage() {
 	const { user, accessToken } = useAuthStore();
 	const { phase, myRole, players, dayNumber, setGameState } = useGameStore();
 	const [isInitializing, setIsInitializing] = useState(true);
+	const hasInitialized = useRef(false);
 
 	// Initialize game data
 	const initializeGame = useCallback(async () => {
-		if (!user || !accessToken) {
-			router.push("/auth/guest");
+		if (!user || !accessToken || hasInitialized.current) {
 			return;
 		}
 
 		try {
 			setIsInitializing(true);
+			hasInitialized.current = true;
 
 			// Fetch game data
 			const response = await axios.get(
@@ -55,7 +60,7 @@ export default function GamePlayPage() {
 
 				// Check if game is in progress
 				if (game.status !== "IN_PROGRESS") {
-					router.push(`/game/${gameCode}`);
+					router.push(`/${locale}/game/${gameCode}`);
 					return;
 				}
 
@@ -64,7 +69,7 @@ export default function GamePlayPage() {
 				);
 
 				if (!currentPlayer || !currentPlayer.role) {
-					router.push(`/game/${gameCode}`);
+					router.push(`/${locale}/game/${gameCode}`);
 					return;
 				}
 
@@ -83,20 +88,26 @@ export default function GamePlayPage() {
 			}
 		} catch (error) {
 			console.error("Failed to initialize game:", error);
-			router.push("/");
+			router.push(`/${locale}`);
 		} finally {
 			setIsInitializing(false);
 		}
-	}, [user, accessToken, gameCode, router, setGameState]);
+	}, [user, accessToken, gameCode, router, setGameState, locale]);
 
-	// Initialize on mount
+	// Check authentication
 	useEffect(() => {
-		initializeGame();
-	}, [initializeGame]);
+		if (!requireAuth(user, router, pathname, locale)) {
+			return;
+		}
+
+		if (user && accessToken && !hasInitialized.current) {
+			initializeGame();
+		}
+	}, [user, accessToken, initializeGame, router, pathname, locale]);
 
 	// Setup socket connection
 	useEffect(() => {
-		if (!socket || isInitializing) return;
+		if (!socket || isInitializing || !user) return;
 
 		// Rejoin game room
 		socket.emit(SocketEvent.JOIN_GAME, gameCode);
@@ -117,7 +128,12 @@ export default function GamePlayPage() {
 		return () => {
 			socket.off(SocketEvent.GAME_UPDATE, handleGameUpdate);
 		};
-	}, [socket, gameCode, isInitializing, setGameState]);
+	}, [socket, gameCode, isInitializing, setGameState, user]);
+
+	// Don't render if not authenticated
+	if (!user) {
+		return null;
+	}
 
 	if (isInitializing) {
 		return (

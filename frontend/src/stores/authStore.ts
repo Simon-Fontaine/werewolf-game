@@ -3,7 +3,7 @@ import axios from "axios";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-interface User {
+export interface User {
 	id: string;
 	username: string;
 	email?: string;
@@ -154,6 +154,10 @@ export const useAuthStore = create<AuthState>()(
 			},
 
 			createGuest: async (locale = "en") => {
+				const currentState = get();
+				if (currentState.isLoading || currentState.user) {
+					return; // Prevent double execution
+				}
 				set({ isLoading: true, error: null });
 				try {
 					const response = await api.post<

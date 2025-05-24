@@ -159,7 +159,7 @@ export const setupGameSocket = (io: Server) => {
 				const startedGame = await gameManager.startGame(gameId);
 				const roomName = `game:${gameId}`;
 
-				// Send game started event to each player with their role
+				// Send game started event to all players
 				io.to(roomName).emit(SocketEvent.GAME_STARTED, {
 					game: {
 						id: startedGame.id,
@@ -170,15 +170,15 @@ export const setupGameSocket = (io: Server) => {
 					},
 				});
 
-				// Send individual role information
-				for (const player of startedGame.players) {
+				// Send individual role information to each player
+				for (const gamePlayer of startedGame.players) {
 					const playerSocket = Array.from(io.sockets.sockets.values()).find(
-						(s) => (s as SocketWithAuth).userId === player.userId,
+						(s) => (s as SocketWithAuth).userId === gamePlayer.userId,
 					);
 
 					if (playerSocket) {
 						playerSocket.emit("role-assigned", {
-							role: player.role,
+							role: gamePlayer.role,
 							players: startedGame.players.map((p) => ({
 								id: p.id,
 								userId: p.userId,
@@ -186,7 +186,7 @@ export const setupGameSocket = (io: Server) => {
 								isAlive: p.isAlive,
 								playerNumber: p.playerNumber,
 								isHost: p.isHost,
-								role: p.userId === player.userId ? p.role : undefined,
+								role: p.userId === gamePlayer.userId ? p.role : undefined,
 							})),
 						});
 					}

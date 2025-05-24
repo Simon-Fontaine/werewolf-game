@@ -9,15 +9,18 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { requireAuth } from "@/lib/auth-utils";
 import { useAuthStore } from "@/stores/authStore";
 import { useGameStore } from "@/stores/gameStore";
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 export default function CreateGamePage() {
 	const t = useTranslations();
 	const router = useRouter();
+	const pathname = usePathname();
+	const locale = useLocale();
 	const { user } = useAuthStore();
 	const { createGame, gameCode, isLoading, error } = useGameStore();
 
@@ -29,20 +32,25 @@ export default function CreateGamePage() {
 	});
 
 	useEffect(() => {
-		if (!user) {
-			router.push("/auth/guest");
+		if (!requireAuth(user, router, pathname, locale)) {
+			return;
 		}
-	}, [user, router]);
+	}, [user, router, pathname, locale]);
 
 	useEffect(() => {
 		if (gameCode) {
-			router.push(`/game/${gameCode}`);
+			router.push(`/${locale}/game/${gameCode}`);
 		}
-	}, [gameCode, router]);
+	}, [gameCode, router, locale]);
 
 	const handleCreate = async () => {
 		await createGame(settings);
 	};
+
+	// Don't render if not authenticated
+	if (!user) {
+		return null;
+	}
 
 	return (
 		<div className="container mx-auto flex min-h-screen items-center justify-center p-4">
@@ -132,7 +140,7 @@ export default function CreateGamePage() {
 					<div className="flex gap-4">
 						<Button
 							variant="outline"
-							onClick={() => router.push("/")}
+							onClick={() => router.push(`/${locale}`)}
 							disabled={isLoading}
 						>
 							{t("common.cancel")}
