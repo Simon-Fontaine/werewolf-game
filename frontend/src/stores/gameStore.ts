@@ -12,6 +12,10 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { useAuthStore } from "./authStore";
 
+interface ExtendedPlayer extends Player {
+	playerNumber?: number;
+}
+
 interface GameStore {
 	// Current game state
 	gameId: string | null;

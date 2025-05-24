@@ -168,7 +168,7 @@
 		"generic": "Une erreur s'est produite",
 		"networkError": "Erreur réseau. Vérifiez votre connexion.",
 		"serverError": "Erreur serveur. Réessayez plus tard.",
-		"unauthorized": "Vous devez être connecté pour faire cela",
+		"unauthorized": "Vous n'êtes pas autorisé à voir cette partie",
 		"forbidden": "Vous n'avez pas la permission de faire cela",
 		"gameNotFound": "Partie introuvable"
 	}

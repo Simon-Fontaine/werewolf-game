@@ -12,12 +12,17 @@ import { useToast } from "@/hooks/use-toast";
 import { useSocket } from "@/hooks/useSocket";
 import { useAuthStore } from "@/stores/authStore";
 import { useGameStore } from "@/stores/gameStore";
-import { type Player, SocketEvent } from "@shared/types";
+import {
+	type GameState,
+	type Player,
+	type Role,
+	SocketEvent,
+} from "@shared/types";
 import axios from "axios";
 import { Copy, Crown, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function GameLobbyPage() {
 	const t = useTranslations();
@@ -28,27 +33,25 @@ export default function GameLobbyPage() {
 
 	const socket = useSocket();
 	const { user, accessToken } = useAuthStore();
-	const {
-		gameId,
-		players,
-		settings,
-		isHost,
-		phase,
-		myRole,
-		updateGameState,
-		setPlayers,
-		addPlayer,
-		removePlayer,
-		reset,
-	} = useGameStore();
+	const { gameId, players, settings, isHost, phase, updateGameState, reset } =
+		useGameStore();
 
 	const [isStarting, setIsStarting] = useState(false);
 	const [isLoading, setIsLoading] = useState(true);
+	const hasJoinedRef = useRef(false);
+	const isMountedRef = useRef(true);
+
+	// Cleanup on unmount
+	useEffect(() => {
+		return () => {
+			isMountedRef.current = false;
+		};
+	}, []);
 
 	// Fetch game data if not in store (e.g., after refresh)
 	useEffect(() => {
 		const fetchGameData = async () => {
-			if (!accessToken) return;
+			if (!accessToken || !isMountedRef.current) return;
 
 			try {
 				const response = await axios.get(
@@ -60,6 +63,8 @@ export default function GameLobbyPage() {
 					},
 				);
 
+				if (!isMountedRef.current) return;
+
 				if (response.data.success && response.data.data) {
 					const { game } = response.data.data;
 					const currentPlayer = game.players.find(
@@ -68,6 +73,11 @@ export default function GameLobbyPage() {
 
 					if (!currentPlayer) {
 						// User is not in this game
+						toast({
+							title: t("common.error"),
+							description: t("errors.unauthorized"),
+							variant: "destructive",
+						});
 						router.push("/");
 						return;
 					}
@@ -86,6 +96,8 @@ export default function GameLobbyPage() {
 				}
 			} catch (error) {
 				console.error("Failed to fetch game data:", error);
+				if (!isMountedRef.current) return;
+
 				toast({
 					title: t("common.error"),
 					description: t("errors.gameNotFound"),
@@ -93,7 +105,9 @@ export default function GameLobbyPage() {
 				});
 				router.push("/");
 			} finally {
-				setIsLoading(false);
+				if (isMountedRef.current) {
+					setIsLoading(false);
+				}
 			}
 		};
 
@@ -102,32 +116,21 @@ export default function GameLobbyPage() {
 			return;
 		}
 
-		// If we don't have game data, fetch it
-		if (!gameId || players.length === 0) {
-			fetchGameData();
-		} else {
-			setIsLoading(false);
-		}
-	}, [
-		gameCode,
-		gameId,
-		user,
-		accessToken,
-		players.length,
-		router,
-		toast,
-		t,
-		updateGameState,
-	]);
+		// Always fetch game data to ensure we have the latest
+		fetchGameData();
+	}, [gameCode, user, accessToken, router, toast, t, updateGameState]);
 
+	// Handle socket connections and events
 	useEffect(() => {
-		if (!socket || !gameId) return;
+		if (!socket || !gameId || hasJoinedRef.current) return;
 
 		// Join the game room
 		socket.emit(SocketEvent.JOIN_GAME, gameCode);
+		hasJoinedRef.current = true;
 
 		// Socket event listeners
-		socket.on(SocketEvent.GAME_UPDATE, (data) => {
+		const handleGameUpdate = (data: { game: GameState }) => {
+			if (!isMountedRef.current) return;
 			const { game } = data;
 			updateGameState({
 				id: game.id,
@@ -137,61 +140,86 @@ export default function GameLobbyPage() {
 				dayNumber: game.dayNumber,
 				settings: game.settings,
 			});
-		});
+		};
 
-		socket.on(SocketEvent.PLAYER_JOINED, (data) => {
+		const handlePlayerJoined = (data: { player: Player }) => {
+			if (!isMountedRef.current) return;
 			const { player } = data;
-			// Add the new player to the list
-			addPlayer(player);
+
+			// Update the entire player list by fetching current game state
+			// This prevents duplicate players
+			useGameStore.setState((state) => ({
+				players: [
+					...state.players.filter((p) => p.userId !== player.userId),
+					player,
+				],
+			}));
+
 			toast({
 				title: t("game.events.playerJoined", { player: player.nickname }),
 			});
-		});
+		};
 
-		socket.on(SocketEvent.PLAYER_LEFT, (data) => {
+		const handlePlayerLeft = (data: {
+			userId: string;
+			username: string;
+		}) => {
+			if (!isMountedRef.current) return;
 			const { userId, username } = data;
-			// Remove the player from the list
-			removePlayer(userId);
+
+			useGameStore.setState((state) => ({
+				players: state.players.filter((p) => p.userId !== userId),
+			}));
+
 			toast({
 				title: t("game.events.playerLeft", { player: username }),
 				variant: "destructive",
 			});
-		});
+		};
 
-		socket.on(SocketEvent.GAME_STARTED, (data) => {
-			const { yourRole } = data;
-			// Store the player's role
-			useGameStore.setState({ myRole: yourRole });
+		const handleGameStarted = (data: {
+			yourRole: Role;
+			players: Player[];
+			game: GameState;
+		}) => {
+			if (!isMountedRef.current) return;
+			const { yourRole, players: gamePlayers } = data;
+
+			// Update game state with new player data (includes roles)
+			useGameStore.setState({
+				myRole: yourRole,
+				players: gamePlayers,
+				phase: data.game.phase,
+				dayNumber: data.game.dayNumber,
+			});
+
 			// Navigate to the game page
 			router.push(`/game/${gameCode}/play`);
-		});
+		};
 
-		socket.on("error", (error) => {
+		const handleError = (error: { message: string }) => {
+			if (!isMountedRef.current) return;
 			toast({
 				title: t("common.error"),
 				description: error.message,
 				variant: "destructive",
 			});
-		});
+		};
+
+		socket.on(SocketEvent.GAME_UPDATE, handleGameUpdate);
+		socket.on(SocketEvent.PLAYER_JOINED, handlePlayerJoined);
+		socket.on(SocketEvent.PLAYER_LEFT, handlePlayerLeft);
+		socket.on(SocketEvent.GAME_STARTED, handleGameStarted);
+		socket.on("error", handleError);
 
 		return () => {
-			socket.off(SocketEvent.GAME_UPDATE);
-			socket.off(SocketEvent.PLAYER_JOINED);
-			socket.off(SocketEvent.PLAYER_LEFT);
-			socket.off(SocketEvent.GAME_STARTED);
-			socket.off("error");
+			socket.off(SocketEvent.GAME_UPDATE, handleGameUpdate);
+			socket.off(SocketEvent.PLAYER_JOINED, handlePlayerJoined);
+			socket.off(SocketEvent.PLAYER_LEFT, handlePlayerLeft);
+			socket.off(SocketEvent.GAME_STARTED, handleGameStarted);
+			socket.off("error", handleError);
 		};
-	}, [
-		socket,
-		gameCode,
-		gameId,
-		t,
-		toast,
-		updateGameState,
-		addPlayer,
-		removePlayer,
-		router,
-	]);
+	}, [socket, gameCode, gameId, t, toast, router, updateGameState]);
 
 	const handleStartGame = () => {
 		if (!socket || !isHost) return;
@@ -202,6 +230,7 @@ export default function GameLobbyPage() {
 	const handleLeaveGame = () => {
 		if (!socket) return;
 		socket.emit(SocketEvent.LEAVE_GAME);
+		hasJoinedRef.current = false;
 		reset();
 		router.push("/");
 	};

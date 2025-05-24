@@ -9,10 +9,11 @@ import { VotingInterface } from "@/components/game/VotingInterface";
 import { useSocket } from "@/hooks/useSocket";
 import { useAuthStore } from "@/stores/authStore";
 import { useGameStore } from "@/stores/gameStore";
-import { GamePhase, Role, SocketEvent } from "@shared/types";
+import { GamePhase, type Player, SocketEvent } from "@shared/types";
+import axios from "axios";
 import { useTranslations } from "next-intl";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export default function GamePlayPage() {
 	const t = useTranslations();
@@ -21,20 +22,90 @@ export default function GamePlayPage() {
 	const gameCode = params.code as string;
 
 	const socket = useSocket();
-	const { user } = useAuthStore();
-	const { phase, myRole, players } = useGameStore();
+	const { user, accessToken } = useAuthStore();
+	const { phase, myRole, players, dayNumber, updateGameState } = useGameStore();
+	const [isLoading, setIsLoading] = useState(true);
 
 	useEffect(() => {
-		if (!user || !myRole) {
-			router.push(`/game/${gameCode}`);
+		const fetchGameData = async () => {
+			if (!accessToken || !user) return;
+
+			try {
+				const response = await axios.get(
+					`${process.env.NEXT_PUBLIC_API_URL}/api/games/${gameCode}`,
+					{
+						headers: {
+							Authorization: `Bearer ${accessToken}`,
+						},
+					},
+				);
+
+				if (response.data.success && response.data.data) {
+					const { game } = response.data.data;
+
+					// Check if game is in progress
+					if (game.status !== "IN_PROGRESS") {
+						router.push(`/game/${gameCode}`);
+						return;
+					}
+
+					const currentPlayer = game.players.find(
+						(p: Player) => p.userId === user.id,
+					);
+
+					if (currentPlayer?.role) {
+						updateGameState({
+							id: game.id,
+							code: game.code,
+							players: game.players,
+							phase: game.phase,
+							dayNumber: game.dayNumber,
+							settings: game.settings,
+						});
+
+						useGameStore.setState({
+							myRole: currentPlayer.role,
+							isHost: currentPlayer.isHost,
+						});
+					} else {
+						// Player not in game or game not started
+						router.push(`/game/${gameCode}`);
+					}
+				}
+			} catch (error) {
+				console.error("Failed to fetch game data:", error);
+				router.push("/");
+			} finally {
+				setIsLoading(false);
+			}
+		};
+
+		if (!user) {
+			router.push("/auth/guest");
 			return;
 		}
-	}, [user, myRole, router, gameCode]);
+
+		// Always fetch game data
+		fetchGameData();
+
+		// Rejoin socket room
+		if (socket) {
+			socket.emit(SocketEvent.JOIN_GAME, gameCode);
+		}
+	}, [user, accessToken, gameCode, router, socket, updateGameState]);
+
+	if (isLoading) {
+		return (
+			<div className="flex min-h-screen items-center justify-center">
+				<p>{t("common.loading")}</p>
+			</div>
+		);
+	}
 
 	if (!myRole) {
 		return (
 			<div className="flex min-h-screen items-center justify-center">
-				<p>{t("common.loading")}</p>
+				<p>{t("errors.gameNotFound")}</p>
 			</div>
 		);
 	}
@@ -46,7 +117,7 @@ export default function GamePlayPage() {
 				<div className="space-y-6">
 					<RoleCard role={myRole} />
 					<GameTimer phase={phase} />
-					<PhaseDisplay phase={phase} dayNumber={1} />
+					<PhaseDisplay phase={phase} dayNumber={dayNumber} />
 				</div>
 
 				{/* Center Column - Game Board */}

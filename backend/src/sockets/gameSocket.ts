@@ -56,15 +56,15 @@ export const setupGameSocket = (io: Server) => {
 					},
 				});
 
-				// Notify others that player joined (only if they weren't already in the room)
+				// Don't notify others if this is a reconnection
+				// Check if this user already has another socket in the room
 				const socketsInRoom = await io.in(roomName).fetchSockets();
-				const wasAlreadyInRoom = socketsInRoom.some(
-					(s) =>
-						s.id !== socket.id &&
-						(s as unknown as SocketWithAuth).userId === socket.userId,
-				);
+				const existingSocketCount = socketsInRoom.filter(
+					(s) => (s as unknown as SocketWithAuth).userId === socket.userId,
+				).length;
 
-				if (!wasAlreadyInRoom) {
+				// Only announce if this is their first socket connection
+				if (existingSocketCount <= 1) {
 					socket.to(roomName).emit(SocketEvent.PLAYER_JOINED, {
 						player: {
 							id: player.id,
@@ -88,16 +88,26 @@ export const setupGameSocket = (io: Server) => {
 				const gameId = socket.data.gameId;
 				if (!gameId || !socket.userId) return;
 
-				await gameManager.leaveGame(gameId, socket.userId);
-
 				const roomName = `game:${gameId}`;
-				socket.leave(roomName);
 
-				// Notify others
-				socket.to(roomName).emit(SocketEvent.PLAYER_LEFT, {
-					userId: socket.userId,
-					username: socket.username,
-				});
+				// Check if user has other connections in the same game
+				const socketsInRoom = await io.in(roomName).fetchSockets();
+				const userSockets = socketsInRoom.filter(
+					(s) => (s as unknown as SocketWithAuth).userId === socket.userId,
+				);
+
+				// Only process leave if this is their last connection
+				if (userSockets.length <= 1) {
+					await gameManager.leaveGame(gameId, socket.userId);
+
+					// Notify others
+					socket.to(roomName).emit(SocketEvent.PLAYER_LEFT, {
+						userId: socket.userId,
+						username: socket.username,
+					});
+				}
+
+				socket.leave(roomName);
 
 				// Clear socket data
 				socket.data.gameId = undefined;
@@ -150,18 +160,35 @@ export const setupGameSocket = (io: Server) => {
 					status: startedGame.status,
 					phase: startedGame.phase,
 					dayNumber: startedGame.dayNumber,
+					settings: startedGame.settings,
 				};
 
-				// Send personalized update to each player with their role
-				const sockets = await io.in(roomName).fetchSockets();
-				for (const s of sockets) {
+				// Get all unique users in the room
+				const socketsInRoom = await io.in(roomName).fetchSockets();
+				const userSocketMap = new Map<string, SocketWithAuth[]>();
+
+				for (const s of socketsInRoom) {
 					const socketWithAuth = s as unknown as SocketWithAuth;
+					const userId = socketWithAuth.userId;
+					if (userId) {
+						if (!userSocketMap.has(userId)) {
+							userSocketMap.set(userId, []);
+						}
+						const userSockets = userSocketMap.get(userId);
+						if (userSockets) {
+							userSockets.push(socketWithAuth);
+						}
+					}
+				}
+
+				// Send to each unique user
+				for (const [userId, userSockets] of userSocketMap) {
 					const playerData = startedGame.players.find(
-						(p) => p.userId === socketWithAuth.userId,
+						(p) => p.userId === userId,
 					);
 
 					if (playerData) {
-						socketWithAuth.emit(SocketEvent.GAME_STARTED, {
+						const gameStartData = {
 							game: gameData,
 							yourRole: playerData.role,
 							players: startedGame.players.map((p) => ({
@@ -172,9 +199,14 @@ export const setupGameSocket = (io: Server) => {
 								playerNumber: p.playerNumber,
 								isHost: p.isHost,
 								// Only show role to the player themselves
-								role: p.userId === socketWithAuth.userId ? p.role : undefined,
+								role: p.userId === userId ? p.role : undefined,
 							})),
-						});
+						};
+
+						// Send to all sockets of this user
+						for (const userSocket of userSockets) {
+							userSocket.emit(SocketEvent.GAME_STARTED, gameStartData);
+						}
 					}
 				}
 			} catch (error) {
