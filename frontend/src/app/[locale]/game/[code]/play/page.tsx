@@ -9,11 +9,17 @@ import { VotingInterface } from "@/components/game/VotingInterface";
 import { useSocket } from "@/hooks/useSocket";
 import { useAuthStore } from "@/stores/authStore";
 import { useGameStore } from "@/stores/gameStore";
-import { GamePhase, type Player, SocketEvent } from "@shared/types";
+import {
+	GamePhase,
+	type GameState,
+	type Player,
+	SocketEvent,
+} from "@shared/types";
 import axios from "axios";
+import { Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export default function GamePlayPage() {
 	const t = useTranslations();
@@ -23,81 +29,103 @@ export default function GamePlayPage() {
 
 	const socket = useSocket();
 	const { user, accessToken } = useAuthStore();
-	const { phase, myRole, players, dayNumber, updateGameState } = useGameStore();
-	const [isLoading, setIsLoading] = useState(true);
+	const { phase, myRole, players, dayNumber, setGameState } = useGameStore();
+	const [isInitializing, setIsInitializing] = useState(true);
 
-	useEffect(() => {
-		const fetchGameData = async () => {
-			if (!accessToken || !user) return;
-
-			try {
-				const response = await axios.get(
-					`${process.env.NEXT_PUBLIC_API_URL}/api/games/${gameCode}`,
-					{
-						headers: {
-							Authorization: `Bearer ${accessToken}`,
-						},
-					},
-				);
-
-				if (response.data.success && response.data.data) {
-					const { game } = response.data.data;
-
-					// Check if game is in progress
-					if (game.status !== "IN_PROGRESS") {
-						router.push(`/game/${gameCode}`);
-						return;
-					}
-
-					const currentPlayer = game.players.find(
-						(p: Player) => p.userId === user.id,
-					);
-
-					if (currentPlayer?.role) {
-						updateGameState({
-							id: game.id,
-							code: game.code,
-							players: game.players,
-							phase: game.phase,
-							dayNumber: game.dayNumber,
-							settings: game.settings,
-						});
-
-						useGameStore.setState({
-							myRole: currentPlayer.role,
-							isHost: currentPlayer.isHost,
-						});
-					} else {
-						// Player not in game or game not started
-						router.push(`/game/${gameCode}`);
-					}
-				}
-			} catch (error) {
-				console.error("Failed to fetch game data:", error);
-				router.push("/");
-			} finally {
-				setIsLoading(false);
-			}
-		};
-
-		if (!user) {
+	// Initialize game data
+	const initializeGame = useCallback(async () => {
+		if (!user || !accessToken) {
 			router.push("/auth/guest");
 			return;
 		}
 
-		// Always fetch game data
-		fetchGameData();
+		try {
+			setIsInitializing(true);
 
-		// Rejoin socket room
-		if (socket) {
-			socket.emit(SocketEvent.JOIN_GAME, gameCode);
+			// Fetch game data
+			const response = await axios.get(
+				`${process.env.NEXT_PUBLIC_API_URL}/api/games/${gameCode}`,
+				{
+					headers: { Authorization: `Bearer ${accessToken}` },
+				},
+			);
+
+			if (response.data.success && response.data.data) {
+				const { game } = response.data.data;
+
+				// Check if game is in progress
+				if (game.status !== "IN_PROGRESS") {
+					router.push(`/game/${gameCode}`);
+					return;
+				}
+
+				const currentPlayer = game.players.find(
+					(p: Player) => p.userId === user.id,
+				);
+
+				if (!currentPlayer || !currentPlayer.role) {
+					router.push(`/game/${gameCode}`);
+					return;
+				}
+
+				// Update game state
+				setGameState({
+					gameId: game.id,
+					gameCode: game.code,
+					players: game.players,
+					phase: game.phase,
+					dayNumber: game.dayNumber,
+					settings: game.settings,
+					status: game.status,
+					myRole: currentPlayer.role,
+					isHost: currentPlayer.isHost,
+				});
+			}
+		} catch (error) {
+			console.error("Failed to initialize game:", error);
+			router.push("/");
+		} finally {
+			setIsInitializing(false);
 		}
-	}, [user, accessToken, gameCode, router, socket, updateGameState]);
+	}, [user, accessToken, gameCode, router, setGameState]);
 
-	if (isLoading) {
+	// Initialize on mount
+	useEffect(() => {
+		initializeGame();
+	}, [initializeGame]);
+
+	// Setup socket connection
+	useEffect(() => {
+		if (!socket || isInitializing) return;
+
+		// Rejoin game room
+		socket.emit(SocketEvent.JOIN_GAME, gameCode);
+
+		// Listen for game updates
+		const handleGameUpdate = (data: { game: GameState }) => {
+			const { game } = data;
+			setGameState({
+				players: game.players,
+				phase: game.phase,
+				dayNumber: game.dayNumber,
+				status: game.status,
+			});
+		};
+
+		socket.on(SocketEvent.GAME_UPDATE, handleGameUpdate);
+
+		return () => {
+			socket.off(SocketEvent.GAME_UPDATE, handleGameUpdate);
+		};
+	}, [socket, gameCode, isInitializing, setGameState]);
+
+	if (isInitializing) {
 		return (
 			<div className="flex min-h-screen items-center justify-center">
-				<p>{t("common.loading")}</p>
+				<div className="flex items-center gap-2">
+					<Loader2 className="h-4 w-4 animate-spin" />
+					<p>{t("common.loading")}</p>
+				</div>
 			</div>
 		);
 	}

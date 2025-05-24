@@ -1,22 +1,28 @@
 import { useAuthStore } from "@/stores/authStore";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { type Socket, io } from "socket.io-client";
 
 export const useSocket = () => {
 	const socketRef = useRef<Socket | null>(null);
-	const [isConnected, setIsConnected] = useState(false);
 	const { accessToken } = useAuthStore();
 
 	useEffect(() => {
+		// Only create socket if we have a token and don't already have a socket
 		if (!accessToken) {
 			if (socketRef.current) {
+				console.log("Disconnecting socket - no access token");
 				socketRef.current.disconnect();
 				socketRef.current = null;
-				setIsConnected(false);
 			}
 			return;
 		}
 
+		// If we already have a connected socket, don't create a new one
+		if (socketRef.current?.connected) {
+			return;
+		}
+
+		console.log("Creating new socket connection");
 		const socket = io(
 			process.env.NEXT_PUBLIC_WS_URL || "http://localhost:3001",
 			{
@@ -25,35 +31,35 @@ export const useSocket = () => {
 				},
 				withCredentials: true,
 				transports: ["websocket", "polling"],
+				reconnection: true,
+				reconnectionDelay: 1000,
+				reconnectionAttempts: 5,
 			},
 		);
 
 		socketRef.current = socket;
 
 		socket.on("connect", () => {
-			console.log("Connected to server");
-			setIsConnected(true);
+			console.log("Socket connected:", socket.id);
 		});
 
-		socket.on("disconnect", () => {
-			console.log("Disconnected from server");
-			setIsConnected(false);
+		socket.on("disconnect", (reason) => {
+			console.log("Socket disconnected:", reason);
 		});
 
-		socket.on("error", (error: { message: string }) => {
+		socket.on("connect_error", (error) => {
+			console.error("Socket connection error:", error.message);
+		});
+
+		socket.on("error", (error) => {
 			console.error("Socket error:", error);
 		});
 
 		return () => {
-			socket.disconnect();
-			setIsConnected(false);
+			// Don't disconnect on cleanup to prevent issues with React StrictMode
+			// The socket will be disconnected when the token changes or is removed
 		};
 	}, [accessToken]);
 
 	return socketRef.current;
-};
-
-export const useSocketStatus = () => {
-	const socket = useSocket();
-	return socket?.connected || false;
 };

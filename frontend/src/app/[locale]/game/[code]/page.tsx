@@ -12,17 +12,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useSocket } from "@/hooks/useSocket";
 import { useAuthStore } from "@/stores/authStore";
 import { useGameStore } from "@/stores/gameStore";
-import {
-	type GameState,
-	type Player,
-	type Role,
-	SocketEvent,
-} from "@shared/types";
+import { type GameState, type Player, SocketEvent } from "@shared/types";
 import axios from "axios";
-import { Copy, Crown, Users } from "lucide-react";
+import { Copy, Crown, Loader2, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export default function GameLobbyPage() {
 	const t = useTranslations();
@@ -33,193 +28,148 @@ export default function GameLobbyPage() {
 
 	const socket = useSocket();
 	const { user, accessToken } = useAuthStore();
-	const { gameId, players, settings, isHost, phase, updateGameState, reset } =
+	const { players, settings, isHost, myRole, setGameState, reset } =
 		useGameStore();
 
 	const [isStarting, setIsStarting] = useState(false);
-	const [isLoading, setIsLoading] = useState(true);
-	const hasJoinedRef = useRef(false);
-	const isMountedRef = useRef(true);
+	const [isInitializing, setIsInitializing] = useState(true);
 
-	// Cleanup on unmount
-	useEffect(() => {
-		return () => {
-			isMountedRef.current = false;
-		};
-	}, []);
-
-	// Fetch game data if not in store (e.g., after refresh)
-	useEffect(() => {
-		const fetchGameData = async () => {
-			if (!accessToken || !isMountedRef.current) return;
-
-			try {
-				const response = await axios.get(
-					`${process.env.NEXT_PUBLIC_API_URL}/api/games/${gameCode}`,
-					{
-						headers: {
-							Authorization: `Bearer ${accessToken}`,
-						},
-					},
-				);
-
-				if (!isMountedRef.current) return;
-
-				if (response.data.success && response.data.data) {
-					const { game } = response.data.data;
-					const currentPlayer = game.players.find(
-						(p: Player) => p.userId === user?.id,
-					);
-
-					if (!currentPlayer) {
-						// User is not in this game
-						toast({
-							title: t("common.error"),
-							description: t("errors.unauthorized"),
-							variant: "destructive",
-						});
-						router.push("/");
-						return;
-					}
-
-					updateGameState({
-						id: game.id,
-						code: game.code,
-						players: game.players,
-						phase: game.phase,
-						dayNumber: game.dayNumber,
-						settings: game.settings,
-					});
-
-					// Set isHost based on current player
-					useGameStore.setState({ isHost: currentPlayer.isHost });
-				}
-			} catch (error) {
-				console.error("Failed to fetch game data:", error);
-				if (!isMountedRef.current) return;
-
-				toast({
-					title: t("common.error"),
-					description: t("errors.gameNotFound"),
-					variant: "destructive",
-				});
-				router.push("/");
-			} finally {
-				if (isMountedRef.current) {
-					setIsLoading(false);
-				}
-			}
-		};
-
-		if (!user) {
+	// Initialize game data
+	const initializeGame = useCallback(async () => {
+		if (!user || !accessToken) {
 			router.push("/auth/guest");
 			return;
 		}
 
-		// Always fetch game data to ensure we have the latest
-		fetchGameData();
-	}, [gameCode, user, accessToken, router, toast, t, updateGameState]);
+		try {
+			setIsInitializing(true);
 
-	// Handle socket connections and events
+			// Fetch game data from API
+			const response = await axios.get(
+				`${process.env.NEXT_PUBLIC_API_URL}/api/games/${gameCode}`,
+				{
+					headers: { Authorization: `Bearer ${accessToken}` },
+				},
+			);
+
+			if (response.data.success && response.data.data) {
+				const { game } = response.data.data;
+
+				// Check if user is in the game
+				const currentPlayer = game.players.find(
+					(p: Player) => p.userId === user.id,
+				);
+				if (!currentPlayer) {
+					toast({
+						title: t("common.error"),
+						description: t("errors.unauthorized"),
+						variant: "destructive",
+					});
+					router.push("/");
+					return;
+				}
+
+				// Update game store
+				setGameState({
+					gameId: game.id,
+					gameCode: game.code,
+					players: game.players,
+					phase: game.phase,
+					dayNumber: game.dayNumber,
+					settings: game.settings,
+					status: game.status,
+					isHost: currentPlayer.isHost,
+				});
+
+				// If game already started, redirect to play page
+				if (game.status === "IN_PROGRESS" && currentPlayer.role) {
+					setGameState({ myRole: currentPlayer.role });
+					router.push(`/game/${gameCode}/play`);
+					return;
+				}
+			}
+		} catch (error) {
+			console.error("Failed to initialize game:", error);
+			toast({
+				title: t("common.error"),
+				description: t("errors.gameNotFound"),
+				variant: "destructive",
+			});
+			router.push("/");
+		} finally {
+			setIsInitializing(false);
+		}
+	}, [user, accessToken, gameCode, router, toast, t, setGameState]);
+
+	// Initialize on mount
 	useEffect(() => {
-		if (!socket || !gameId || hasJoinedRef.current) return;
+		initializeGame();
+	}, [initializeGame]);
 
-		// Join the game room
+	// Setup socket listeners
+	useEffect(() => {
+		if (!socket || isInitializing) return;
+
+		console.log("Setting up socket listeners");
+
+		// Join the game room via socket
 		socket.emit(SocketEvent.JOIN_GAME, gameCode);
-		hasJoinedRef.current = true;
 
-		// Socket event listeners
+		// Listen for game updates
 		const handleGameUpdate = (data: { game: GameState }) => {
-			if (!isMountedRef.current) return;
+			console.log("Received game update:", data);
 			const { game } = data;
-			updateGameState({
-				id: game.id,
-				code: game.code,
+			setGameState({
 				players: game.players,
 				phase: game.phase,
 				dayNumber: game.dayNumber,
-				settings: game.settings,
+				status: game.status,
 			});
 		};
 
-		const handlePlayerJoined = (data: { player: Player }) => {
-			if (!isMountedRef.current) return;
-			const { player } = data;
-
-			// Update the entire player list by fetching current game state
-			// This prevents duplicate players
-			useGameStore.setState((state) => ({
-				players: [
-					...state.players.filter((p) => p.userId !== player.userId),
-					player,
-				],
-			}));
-
-			toast({
-				title: t("game.events.playerJoined", { player: player.nickname }),
-			});
-		};
-
-		const handlePlayerLeft = (data: {
-			userId: string;
-			username: string;
-		}) => {
-			if (!isMountedRef.current) return;
-			const { userId, username } = data;
-
-			useGameStore.setState((state) => ({
-				players: state.players.filter((p) => p.userId !== userId),
-			}));
-
-			toast({
-				title: t("game.events.playerLeft", { player: username }),
-				variant: "destructive",
-			});
-		};
-
-		const handleGameStarted = (data: {
-			yourRole: Role;
-			players: Player[];
-			game: GameState;
-		}) => {
-			if (!isMountedRef.current) return;
-			const { yourRole, players: gamePlayers } = data;
-
-			// Update game state with new player data (includes roles)
-			useGameStore.setState({
-				myRole: yourRole,
-				players: gamePlayers,
+		// Listen for game started
+		const handleGameStarted = (data: { game: GameState }) => {
+			console.log("Game started:", data);
+			setGameState({
+				status: "IN_PROGRESS",
 				phase: data.game.phase,
 				dayNumber: data.game.dayNumber,
 			});
+		};
 
-			// Navigate to the game page
+		// Listen for role assignment
+		const handleRoleAssigned = (data: { players: Player[] } & Player) => {
+			console.log("Role assigned:", data.role);
+			setGameState({
+				myRole: data.role,
+				players: data.players,
+			});
 			router.push(`/game/${gameCode}/play`);
 		};
 
+		// Listen for errors
 		const handleError = (error: { message: string }) => {
-			if (!isMountedRef.current) return;
+			console.error("Socket error:", error);
 			toast({
 				title: t("common.error"),
 				description: error.message,
 				variant: "destructive",
 			});
+			setIsStarting(false);
 		};
 
 		socket.on(SocketEvent.GAME_UPDATE, handleGameUpdate);
-		socket.on(SocketEvent.PLAYER_JOINED, handlePlayerJoined);
-		socket.on(SocketEvent.PLAYER_LEFT, handlePlayerLeft);
 		socket.on(SocketEvent.GAME_STARTED, handleGameStarted);
+		socket.on("role-assigned", handleRoleAssigned);
 		socket.on("error", handleError);
 
 		return () => {
 			socket.off(SocketEvent.GAME_UPDATE, handleGameUpdate);
-			socket.off(SocketEvent.PLAYER_JOINED, handlePlayerJoined);
-			socket.off(SocketEvent.PLAYER_LEFT, handlePlayerLeft);
 			socket.off(SocketEvent.GAME_STARTED, handleGameStarted);
+			socket.off("role-assigned", handleRoleAssigned);
 			socket.off("error", handleError);
 		};
-	}, [socket, gameCode, gameId, t, toast, router, updateGameState]);
+	}, [socket, gameCode, isInitializing, router, toast, t, setGameState]);
 
 	const handleStartGame = () => {
 		if (!socket || !isHost) return;
@@ -228,9 +178,9 @@ export default function GameLobbyPage() {
 	};
 
 	const handleLeaveGame = () => {
-		if (!socket) return;
-		socket.emit(SocketEvent.LEAVE_GAME);
-		hasJoinedRef.current = false;
+		if (socket) {
+			socket.emit(SocketEvent.LEAVE_GAME);
+		}
 		reset();
 		router.push("/");
 	};
@@ -242,10 +192,13 @@ export default function GameLobbyPage() {
 		});
 	};
 
-	if (isLoading) {
+	if (isInitializing) {
 		return (
 			<div className="flex min-h-screen items-center justify-center">
-				<p>{t("common.loading")}</p>
+				<div className="flex items-center gap-2">
+					<Loader2 className="h-4 w-4 animate-spin" />
+					<p>{t("common.loading")}</p>
+				</div>
 			</div>
 		);
 	}
@@ -335,8 +288,7 @@ export default function GameLobbyPage() {
 								{t("game.lobby.players")}
 							</CardTitle>
 							<span className="text-sm text-muted-foreground">
-								{t("game.lobby.playerCount", { count: players.length })} /{" "}
-								{settings.maxPlayers}
+								{players.length} / {settings.maxPlayers}
 							</span>
 						</div>
 					</CardHeader>
@@ -381,7 +333,14 @@ export default function GameLobbyPage() {
 							className="w-full"
 							size="lg"
 						>
-							{isStarting ? t("common.loading") : t("game.lobby.startGame")}
+							{isStarting ? (
+								<div className="flex items-center gap-2">
+									<Loader2 className="h-4 w-4 animate-spin" />
+									{t("common.loading")}
+								</div>
+							) : (
+								t("game.lobby.startGame")
+							)}
 						</Button>
 					</div>
 				)}

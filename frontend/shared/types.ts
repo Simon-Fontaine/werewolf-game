@@ -1,10 +1,16 @@
 export interface GameState {
 	id: string;
 	code: string;
-	players: Player[];
+	status: GameStatus;
 	phase: GamePhase;
 	dayNumber: number;
 	settings: GameSettings;
+	locale: string;
+	winningSide?: Side;
+	startedAt?: Date;
+	endedAt?: Date;
+	createdAt: Date;
+	players: Player[];
 }
 
 export interface Player {
@@ -29,6 +35,13 @@ export interface RoleDistribution {
 }
 
 // Enums
+export enum GameStatus {
+	WAITING = "LOBBY",
+	IN_PROGRESS = "IN_PROGRESS",
+	COMPLETED = "COMPLETED",
+	CANCELLED = "CANCELLED",
+}
+
 export enum GamePhase {
 	WAITING = "WAITING",
 	NIGHT = "NIGHT",

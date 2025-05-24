@@ -1,19 +1,12 @@
 import { type GameSettings, Role, type RoleDistribution } from "@shared/types";
+import { SocketEvent } from "@shared/types";
 import {
 	type Game,
 	type GamePlayer,
 	type GameStatus,
 	Prisma,
 } from "../../generated/prisma";
-import { prisma } from "../index";
-
-interface ActiveGame {
-	id: string;
-	code: string;
-	players: Map<string, GamePlayer>;
-	settings: GameSettings;
-	status: GameStatus;
-}
+import { io, prisma } from "../index";
 
 const gameWithPlayers = Prisma.validator<Prisma.GameDefaultArgs>()({
 	include: {
@@ -28,9 +21,6 @@ const gameWithPlayers = Prisma.validator<Prisma.GameDefaultArgs>()({
 type GameWithPlayers = Prisma.GameGetPayload<typeof gameWithPlayers>;
 
 class GameManager {
-	private activeGames: Map<string, ActiveGame> = new Map();
-
-	// Generate unique game code
 	private generateGameCode(): string {
 		const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 		let code = "";
@@ -93,16 +83,6 @@ class GameManager {
 			},
 		});
 
-		// Add to active games
-		const activeGame: ActiveGame = {
-			id: game.id,
-			code: game.code,
-			players: new Map([[hostUserId, game.players[0]]]),
-			settings: gameSettings,
-			status: game.status,
-		};
-		this.activeGames.set(game.id, activeGame);
-
 		return game;
 	}
 
@@ -111,7 +91,6 @@ class GameManager {
 		userId: string,
 		nickname: string,
 	): Promise<{ game: Game; player: GamePlayer }> {
-		// Find game
 		const game = await prisma.game.findUnique({
 			where: { code },
 			include: { players: true },
@@ -131,14 +110,24 @@ class GameManager {
 			return { game, player: existingPlayer };
 		}
 
-		// Check if game is full
 		const settings = game.settings as unknown as GameSettings;
 		if (game.players.length >= settings.maxPlayers) {
 			throw new Error("Game is full");
 		}
 
-		// Add player
-		const playerNumber = game.players.length + 1;
+		// Add player with next available number
+		const existingNumbers = game.players
+			.map((p) => p.playerNumber)
+			.sort((a, b) => a - b);
+		let playerNumber = 1;
+		for (const num of existingNumbers) {
+			if (num === playerNumber) {
+				playerNumber++;
+			} else {
+				break;
+			}
+		}
+
 		const player = await prisma.gamePlayer.create({
 			data: {
 				gameId: game.id,
@@ -149,10 +138,30 @@ class GameManager {
 			},
 		});
 
-		// Update active game if exists
-		const activeGame = this.activeGames.get(game.id);
-		if (activeGame) {
-			activeGame.players.set(userId, player);
+		// Get updated game with all players
+		const updatedGame = await this.getGame(game.id);
+
+		// Notify all players in the room
+		if (updatedGame) {
+			const roomName = `game:${game.id}`;
+			io.to(roomName).emit(SocketEvent.GAME_UPDATE, {
+				game: {
+					id: updatedGame.id,
+					code: updatedGame.code,
+					status: updatedGame.status,
+					phase: updatedGame.phase,
+					dayNumber: updatedGame.dayNumber,
+					settings: updatedGame.settings,
+					players: updatedGame.players.map((p) => ({
+						id: p.id,
+						userId: p.userId,
+						nickname: p.nickname,
+						isHost: p.isHost,
+						isAlive: p.isAlive,
+						playerNumber: p.playerNumber,
+					})),
+				},
+			});
 		}
 
 		return { game, player };
@@ -173,39 +182,27 @@ class GameManager {
 			throw new Error("Player not in game");
 		}
 
-		// If game hasn't started, remove player
 		if (game.status === "LOBBY") {
+			// Delete the player
 			await prisma.gamePlayer.delete({
 				where: { id: player.id },
 			});
-
-			// Update active game
-			const activeGame = this.activeGames.get(gameId);
-			if (activeGame) {
-				activeGame.players.delete(userId);
-			}
 
 			// If host left, assign new host or cancel game
 			if (player.isHost) {
 				const remainingPlayers = game.players.filter((p) => p.id !== player.id);
 				if (remainingPlayers.length > 0) {
-					// Assign new host
 					await prisma.gamePlayer.update({
 						where: { id: remainingPlayers[0].id },
 						data: { isHost: true },
 					});
 				} else {
-					// Cancel game
 					await prisma.game.update({
 						where: { id: gameId },
 						data: { status: "CANCELLED" },
 					});
-					this.activeGames.delete(gameId);
 				}
 			}
-		} else {
-			// TODO: Game in progress - mark player as disconnected or handle differently
-			console.log(`Player ${userId} left active game ${gameId}`);
 		}
 	}
 
@@ -300,7 +297,7 @@ class GameManager {
 			roles.push(Role.VILLAGER);
 		}
 
-		// Remove excess roles if needed (shouldn't happen with proper config)
+		// Remove excess roles if needed
 		while (roles.length > playerCount) {
 			const villagerIndex = roles.lastIndexOf(Role.VILLAGER);
 			if (villagerIndex !== -1) {
@@ -337,14 +334,6 @@ class GameManager {
 				},
 			},
 		});
-	}
-
-	getActiveGame(gameId: string): ActiveGame | undefined {
-		return this.activeGames.get(gameId);
-	}
-
-	isGameActive(gameId: string): boolean {
-		return this.activeGames.has(gameId);
 	}
 }
 
