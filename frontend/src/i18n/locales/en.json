@@ -158,6 +158,10 @@
 			"villageWins": "The village wins!",
 			"werewolvesWin": "The werewolves win!",
 			"yourRole": "Your role is: {role}"
+		},
+		"events": {
+			"playerJoined": "{{player}} joined the game",
+			"playerLeft": "{{player}} left the game"
 		}
 	},
 	"errors": {
@@ -165,6 +169,7 @@
 		"networkError": "Network error. Please check your connection.",
 		"serverError": "Server error. Please try again later.",
 		"unauthorized": "You must be logged in to do that",
-		"forbidden": "You don't have permission to do that"
+		"forbidden": "You don't have permission to do that",
+		"gameNotFound": "Game not found"
 	}
 }

@@ -1,9 +1,10 @@
 import { useAuthStore } from "@/stores/authStore";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type Socket, io } from "socket.io-client";
 
 export const useSocket = () => {
 	const socketRef = useRef<Socket | null>(null);
+	const [isConnected, setIsConnected] = useState(false);
 	const { accessToken } = useAuthStore();
 
 	useEffect(() => {
@@ -11,6 +12,7 @@ export const useSocket = () => {
 			if (socketRef.current) {
 				socketRef.current.disconnect();
 				socketRef.current = null;
+				setIsConnected(false);
 			}
 			return;
 		}
@@ -22,6 +24,7 @@ export const useSocket = () => {
 					token: accessToken,
 				},
 				withCredentials: true,
+				transports: ["websocket", "polling"],
 			},
 		);
 
@@ -29,10 +32,12 @@ export const useSocket = () => {
 
 		socket.on("connect", () => {
 			console.log("Connected to server");
+			setIsConnected(true);
 		});
 
 		socket.on("disconnect", () => {
 			console.log("Disconnected from server");
+			setIsConnected(false);
 		});
 
 		socket.on("error", (error: { message: string }) => {
@@ -41,8 +46,14 @@ export const useSocket = () => {
 
 		return () => {
 			socket.disconnect();
+			setIsConnected(false);
 		};
 	}, [accessToken]);
 
 	return socketRef.current;
+};
+
+export const useSocketStatus = () => {
+	const socket = useSocket();
+	return socket?.connected || false;
 };

@@ -13,6 +13,7 @@ import { useSocket } from "@/hooks/useSocket";
 import { useAuthStore } from "@/stores/authStore";
 import { useGameStore } from "@/stores/gameStore";
 import { type Player, SocketEvent } from "@shared/types";
+import axios from "axios";
 import { Copy, Crown, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useParams, useRouter } from "next/navigation";
@@ -26,7 +27,7 @@ export default function GameLobbyPage() {
 	const { toast } = useToast();
 
 	const socket = useSocket();
-	const { user } = useAuthStore();
+	const { user, accessToken } = useAuthStore();
 	const {
 		gameId,
 		players,
@@ -35,18 +36,92 @@ export default function GameLobbyPage() {
 		phase,
 		myRole,
 		updateGameState,
+		setPlayers,
+		addPlayer,
+		removePlayer,
 		reset,
 	} = useGameStore();
 
 	const [isStarting, setIsStarting] = useState(false);
+	const [isLoading, setIsLoading] = useState(true);
 
+	// Fetch game data if not in store (e.g., after refresh)
 	useEffect(() => {
+		const fetchGameData = async () => {
+			if (!accessToken) return;
+
+			try {
+				const response = await axios.get(
+					`${process.env.NEXT_PUBLIC_API_URL}/api/games/${gameCode}`,
+					{
+						headers: {
+							Authorization: `Bearer ${accessToken}`,
+						},
+					},
+				);
+
+				if (response.data.success && response.data.data) {
+					const { game } = response.data.data;
+					const currentPlayer = game.players.find(
+						(p: Player) => p.userId === user?.id,
+					);
+
+					if (!currentPlayer) {
+						// User is not in this game
+						router.push("/");
+						return;
+					}
+
+					updateGameState({
+						id: game.id,
+						code: game.code,
+						players: game.players,
+						phase: game.phase,
+						dayNumber: game.dayNumber,
+						settings: game.settings,
+					});
+
+					// Set isHost based on current player
+					useGameStore.setState({ isHost: currentPlayer.isHost });
+				}
+			} catch (error) {
+				console.error("Failed to fetch game data:", error);
+				toast({
+					title: t("common.error"),
+					description: t("errors.gameNotFound"),
+					variant: "destructive",
+				});
+				router.push("/");
+			} finally {
+				setIsLoading(false);
+			}
+		};
+
 		if (!user) {
 			router.push("/auth/guest");
 			return;
 		}
 
-		if (!socket) return;
+		// If we don't have game data, fetch it
+		if (!gameId || players.length === 0) {
+			fetchGameData();
+		} else {
+			setIsLoading(false);
+		}
+	}, [
+		gameCode,
+		gameId,
+		user,
+		accessToken,
+		players.length,
+		router,
+		toast,
+		t,
+		updateGameState,
+	]);
+
+	useEffect(() => {
+		if (!socket || !gameId) return;
 
 		// Join the game room
 		socket.emit(SocketEvent.JOIN_GAME, gameCode);
@@ -66,13 +141,17 @@ export default function GameLobbyPage() {
 
 		socket.on(SocketEvent.PLAYER_JOINED, (data) => {
 			const { player } = data;
+			// Add the new player to the list
+			addPlayer(player);
 			toast({
 				title: t("game.events.playerJoined", { player: player.nickname }),
 			});
 		});
 
 		socket.on(SocketEvent.PLAYER_LEFT, (data) => {
-			const { username } = data;
+			const { userId, username } = data;
+			// Remove the player from the list
+			removePlayer(userId);
 			toast({
 				title: t("game.events.playerLeft", { player: username }),
 				variant: "destructive",
@@ -102,7 +181,17 @@ export default function GameLobbyPage() {
 			socket.off(SocketEvent.GAME_STARTED);
 			socket.off("error");
 		};
-	}, [socket, gameCode, user, router, t, toast, updateGameState]);
+	}, [
+		socket,
+		gameCode,
+		gameId,
+		t,
+		toast,
+		updateGameState,
+		addPlayer,
+		removePlayer,
+		router,
+	]);
 
 	const handleStartGame = () => {
 		if (!socket || !isHost) return;
@@ -124,10 +213,18 @@ export default function GameLobbyPage() {
 		});
 	};
 
-	if (!settings) {
+	if (isLoading) {
 		return (
 			<div className="flex min-h-screen items-center justify-center">
 				<p>{t("common.loading")}</p>
+			</div>
+		);
+	}
+
+	if (!settings) {
+		return (
+			<div className="flex min-h-screen items-center justify-center">
+				<p>{t("errors.gameNotFound")}</p>
 			</div>
 		);
 	}
@@ -251,7 +348,7 @@ export default function GameLobbyPage() {
 					<div className="md:col-span-2">
 						<Button
 							onClick={handleStartGame}
-							// disabled={!canStart || isStarting}
+							disabled={!canStart || isStarting}
 							className="w-full"
 							size="lg"
 						>

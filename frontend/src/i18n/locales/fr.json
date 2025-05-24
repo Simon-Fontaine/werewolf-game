@@ -158,6 +158,10 @@
 			"villageWins": "Le village gagne !",
 			"werewolvesWin": "Les loups-garous gagnent !",
 			"yourRole": "Votre rôle est : {role}"
+		},
+		"events": {
+			"playerJoined": "{{player}} a rejoint la partie",
+			"playerLeft": "{{player}} a quitté la partie"
 		}
 	},
 	"errors": {
@@ -165,6 +169,7 @@
 		"networkError": "Erreur réseau. Vérifiez votre connexion.",
 		"serverError": "Erreur serveur. Réessayez plus tard.",
 		"unauthorized": "Vous devez être connecté pour faire cela",
-		"forbidden": "Vous n'avez pas la permission de faire cela"
+		"forbidden": "Vous n'avez pas la permission de faire cela",
+		"gameNotFound": "Partie introuvable"
 	}
 }

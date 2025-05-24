@@ -32,17 +32,7 @@ export const setupGameSocket = (io: Server) => {
 				// Store game info on socket
 				socket.data.gameId = game.id;
 				socket.data.gameCode = game.code;
-
-				// Notify others that player joined
-				socket.to(roomName).emit(SocketEvent.PLAYER_JOINED, {
-					player: {
-						id: player.id,
-						userId: player.userId,
-						nickname: player.nickname,
-						isHost: player.isHost,
-						playerNumber: player.playerNumber,
-					},
-				});
+				socket.data.playerId = player.id;
 
 				// Send current game state to the player
 				socket.emit(SocketEvent.GAME_UPDATE, {
@@ -65,6 +55,27 @@ export const setupGameSocket = (io: Server) => {
 						})),
 					},
 				});
+
+				// Notify others that player joined (only if they weren't already in the room)
+				const socketsInRoom = await io.in(roomName).fetchSockets();
+				const wasAlreadyInRoom = socketsInRoom.some(
+					(s) =>
+						s.id !== socket.id &&
+						(s as unknown as SocketWithAuth).userId === socket.userId,
+				);
+
+				if (!wasAlreadyInRoom) {
+					socket.to(roomName).emit(SocketEvent.PLAYER_JOINED, {
+						player: {
+							id: player.id,
+							userId: player.userId,
+							nickname: player.nickname,
+							isHost: player.isHost,
+							isAlive: player.isAlive,
+							playerNumber: player.playerNumber,
+						},
+					});
+				}
 			} catch (error) {
 				console.error("Join game error:", error);
 				socket.emit("error", { message: "Failed to join game" });
@@ -91,6 +102,7 @@ export const setupGameSocket = (io: Server) => {
 				// Clear socket data
 				socket.data.gameId = undefined;
 				socket.data.gameCode = undefined;
+				socket.data.playerId = undefined;
 			} catch (error) {
 				console.error("Leave game error:", error);
 				socket.emit("error", { message: "Failed to leave game" });
@@ -158,6 +170,7 @@ export const setupGameSocket = (io: Server) => {
 								nickname: p.nickname,
 								isAlive: p.isAlive,
 								playerNumber: p.playerNumber,
+								isHost: p.isHost,
 								// Only show role to the player themselves
 								role: p.userId === socketWithAuth.userId ? p.role : undefined,
 							})),
@@ -177,12 +190,22 @@ export const setupGameSocket = (io: Server) => {
 			// Handle leaving game if in one
 			const gameId = socket.data.gameId;
 			if (gameId && socket.userId) {
-				// TODO: mark the player as disconnected rather than removing them
 				const roomName = `game:${gameId}`;
-				socket.to(roomName).emit("player-disconnected", {
-					userId: socket.userId,
-					username: socket.username,
-				});
+
+				// Check if user has other connections in the same game
+				const socketsInRoom = await io.in(roomName).fetchSockets();
+				const hasOtherConnections = socketsInRoom.some(
+					(s) =>
+						s.id !== socket.id &&
+						(s as unknown as SocketWithAuth).userId === socket.userId,
+				);
+
+				if (!hasOtherConnections) {
+					socket.to(roomName).emit("player-disconnected", {
+						userId: socket.userId,
+						username: socket.username,
+					});
+				}
 			}
 		});
 	});
