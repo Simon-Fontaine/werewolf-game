@@ -2,14 +2,7 @@ import type { ApiResponse } from "@shared/types";
 import axios from "axios";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-
-export interface User {
-	id: string;
-	username: string;
-	email?: string;
-	isGuest: boolean;
-	locale: string;
-}
+import type { User } from "../../generated/prisma";
 
 interface AuthState {
 	user: User | null;

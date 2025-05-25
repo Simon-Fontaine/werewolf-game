@@ -1,25 +1,55 @@
-export interface GameState {
-	id: string;
-	code: string;
-	status: GameStatus;
-	phase: GamePhase;
-	dayNumber: number;
-	settings: GameSettings;
-	locale: string;
-	winningSide?: Side;
-	startedAt?: Date;
-	endedAt?: Date;
-	createdAt: Date;
-	players: Player[];
-}
+import type { Role } from "../generated/prisma";
 
-export interface Player {
-	id: string;
-	userId: string;
-	nickname: string;
-	role?: Role;
-	isAlive: boolean;
-	isHost: boolean;
+export enum SocketEvent {
+	// Connection events
+	CONNECT = "connect",
+	DISCONNECT = "disconnect",
+	CONNECTION_ERROR = "connection-error",
+	RECONNECT = "reconnect",
+
+	// Authentication
+	AUTHENTICATE = "authenticate",
+	AUTHENTICATION_SUCCESS = "authentication-success",
+	AUTHENTICATION_FAILED = "authentication-failed",
+
+	// Game lifecycle
+	CREATE_GAME = "create-game",
+	GAME_CREATED = "game-created",
+	JOIN_GAME = "join-game",
+	LEAVE_GAME = "leave-game",
+	START_GAME = "start-game",
+	END_GAME = "end-game",
+
+	// Game state updates
+	GAME_UPDATE = "game-update",
+	GAME_STARTED = "game-started",
+	GAME_ENDED = "game-ended",
+	PHASE_CHANGED = "phase-changed",
+	GAME_DELETED = "game-deleted",
+
+	// Player events
+	HOST_CHANGED = "host-changed",
+	PLAYER_JOINED = "player-joined",
+	PLAYER_LEFT = "player-left",
+	PLAYER_ELIMINATED = "player-eliminated",
+	PLAYER_ROLE_REVEALED = "player-role-revealed",
+
+	// Game actions
+	VOTE = "vote",
+	VOTE_CAST = "vote-cast",
+	NIGHT_ACTION = "night-action",
+	ACTION_PERFORMED = "action-performed",
+
+	// Chat system
+	SEND_MESSAGE = "send-message",
+	RECEIVE_MESSAGE = "receive-message",
+	CHAT_MESSAGE = "chat-message",
+
+	// Error handling
+	ERROR = "error",
+	INVALID_ACTION = "invalid-action",
+	GAME_NOT_FOUND = "game-not-found",
+	PLAYER_NOT_FOUND = "player-not-found",
 }
 
 export interface GameSettings {
@@ -27,68 +57,7 @@ export interface GameSettings {
 	maxPlayers: number;
 	discussionTime: number;
 	votingTime: number;
-	roles: RoleDistribution;
-}
-
-export interface RoleDistribution {
-	[key: string]: number;
-}
-
-// Enums
-export enum GameStatus {
-	WAITING = "LOBBY",
-	IN_PROGRESS = "IN_PROGRESS",
-	COMPLETED = "COMPLETED",
-	CANCELLED = "CANCELLED",
-}
-
-export enum GamePhase {
-	WAITING = "WAITING",
-	NIGHT = "NIGHT",
-	DISCUSSION = "DISCUSSION",
-	VOTING = "VOTING",
-	EXECUTION = "EXECUTION",
-}
-
-export enum Role {
-	VILLAGER = "VILLAGER",
-	WEREWOLF = "WEREWOLF",
-	SEER = "SEER",
-	DOCTOR = "DOCTOR",
-	HUNTER = "HUNTER",
-	WITCH = "WITCH",
-}
-
-export enum Side {
-	VILLAGE = "VILLAGE",
-	WEREWOLF = "WEREWOLF",
-}
-
-// Socket events
-export enum SocketEvent {
-	// Connection
-	CONNECT = "connect",
-	DISCONNECT = "disconnect",
-
-	// Game
-	CREATE_GAME = "create-game",
-	JOIN_GAME = "join-game",
-	LEAVE_GAME = "leave-game",
-	START_GAME = "start-game",
-
-	// Game updates
-	GAME_UPDATE = "game-update",
-	PLAYER_JOINED = "player-joined",
-	PLAYER_LEFT = "player-left",
-	GAME_STARTED = "game-started",
-
-	// Actions
-	VOTE = "vote",
-	NIGHT_ACTION = "night-action",
-
-	// Chat
-	SEND_MESSAGE = "send-message",
-	RECEIVE_MESSAGE = "receive-message",
+	roles: Record<Role, number>;
 }
 
 // API types
@@ -96,14 +65,4 @@ export interface ApiResponse<T = unknown> {
 	success: boolean;
 	data?: T;
 	error?: string;
-}
-
-export interface CreateGameRequest {
-	hostName: string;
-	settings?: Partial<GameSettings>;
-}
-
-export interface JoinGameRequest {
-	code: string;
-	playerName: string;
 }

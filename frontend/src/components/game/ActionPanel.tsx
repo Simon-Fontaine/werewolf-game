@@ -1,14 +1,14 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSocket } from "@/hooks/useSocket";
-import { type Player, Role } from "@shared/types";
 import { SocketEvent } from "@shared/types";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { type GamePlayer, Role } from "../../../generated/prisma";
 
 interface ActionPanelProps {
 	role: Role;
-	players: Player[];
+	players: GamePlayer[];
 }
 
 export function ActionPanel({ role, players }: ActionPanelProps) {
@@ -18,6 +18,20 @@ export function ActionPanel({ role, players }: ActionPanelProps) {
 	const [hasActed, setHasActed] = useState(false);
 
 	const alivePlayers = players.filter((p) => p.isAlive);
+
+	useEffect(() => {
+		if (!socket) return;
+
+		const handleActionConfirmed = () => {
+			setHasActed(true);
+		};
+
+		socket.on("action-confirmed", handleActionConfirmed);
+
+		return () => {
+			socket.off("action-confirmed", handleActionConfirmed);
+		};
+	}, [socket]);
 
 	const handleAction = () => {
 		if (!socket || !selectedPlayer || hasActed) return;
@@ -41,8 +55,6 @@ export function ActionPanel({ role, players }: ActionPanelProps) {
 			action: actionType,
 			targetId: selectedPlayer,
 		});
-
-		setHasActed(true);
 	};
 
 	if (role === Role.VILLAGER) {

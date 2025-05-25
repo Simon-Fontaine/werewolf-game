@@ -12,18 +12,14 @@ import { useToast } from "@/hooks/use-toast";
 import { useSocket } from "@/hooks/useSocket";
 import { requireAuth } from "@/lib/auth-utils";
 import { useAuthStore } from "@/stores/authStore";
-import { useGameStore } from "@/stores/gameStore";
-import {
-	type GameState,
-	type Player,
-	type Role,
-	SocketEvent,
-} from "@shared/types";
+import { type GameWithRelations, useGameStore } from "@/stores/gameStore";
+import { SocketEvent } from "@shared/types";
 import axios from "axios";
 import { Copy, Crown, Loader2, Users } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { GamePlayer, Role } from "../../../../../generated/prisma";
 
 export default function GameLobbyPage() {
 	const t = useTranslations();
@@ -66,7 +62,7 @@ export default function GameLobbyPage() {
 
 				// Check if user is in the game
 				const currentPlayer = game.players.find(
-					(p: Player) => p.userId === user.id,
+					(p: GamePlayer) => p.userId === user.id,
 				);
 				if (!currentPlayer) {
 					toast({
@@ -133,7 +129,7 @@ export default function GameLobbyPage() {
 		socket.emit(SocketEvent.JOIN_GAME, gameCode);
 
 		// Listen for game updates
-		const handleGameUpdate = (data: { game: GameState }) => {
+		const handleGameUpdate = (data: { game: GameWithRelations }) => {
 			console.log("Received game update:", data);
 			const { game } = data;
 			setGameState({
@@ -145,7 +141,7 @@ export default function GameLobbyPage() {
 		};
 
 		// Listen for game started
-		const handleGameStarted = (data: { game: GameState }) => {
+		const handleGameStarted = (data: { game: GameWithRelations }) => {
 			console.log("Game started:", data);
 			setGameState({
 				status: "IN_PROGRESS",
@@ -155,7 +151,10 @@ export default function GameLobbyPage() {
 		};
 
 		// Listen for role assignment
-		const handleRoleAssigned = (data: { players: Player[]; role: Role }) => {
+		const handleRoleAssigned = (data: {
+			players: GamePlayer[];
+			role: Role;
+		}) => {
 			console.log("Role assigned:", data.role);
 			setGameState({
 				myRole: data.role,

@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { GamePhase } from "@shared/types";
 import { Gavel, MessageSquare, Moon, Sun, Vote } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { GamePhase } from "../../../generated/prisma";
 
 interface PhaseDisplayProps {
 	phase: GamePhase;

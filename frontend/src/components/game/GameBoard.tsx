@@ -1,9 +1,9 @@
 import { Card } from "@/components/ui/card";
-import type { Player } from "@shared/types";
 import { Skull, User } from "lucide-react";
+import type { GamePlayer } from "../../../generated/prisma";
 
 interface GameBoardProps {
-	players: Player[];
+	players: GamePlayer[];
 	currentUserId: string;
 }
 

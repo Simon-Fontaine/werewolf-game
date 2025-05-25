@@ -1,4 +1,3 @@
-// frontend/src/app/[locale]/game/[code]/play/page.tsx
 "use client";
 
 import { ActionPanel } from "@/components/game/ActionPanel";
@@ -10,18 +9,14 @@ import { VotingInterface } from "@/components/game/VotingInterface";
 import { useSocket } from "@/hooks/useSocket";
 import { requireAuth } from "@/lib/auth-utils";
 import { useAuthStore } from "@/stores/authStore";
-import { useGameStore } from "@/stores/gameStore";
-import {
-	GamePhase,
-	type GameState,
-	type Player,
-	SocketEvent,
-} from "@shared/types";
+import { type GameWithRelations, useGameStore } from "@/stores/gameStore";
+import { SocketEvent } from "@shared/types";
 import axios from "axios";
 import { Loader2 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { GamePhase, type GamePlayer } from "../../../../../../generated/prisma";
 
 export default function GamePlayPage() {
 	const t = useTranslations();
@@ -65,7 +60,7 @@ export default function GamePlayPage() {
 				}
 
 				const currentPlayer = game.players.find(
-					(p: Player) => p.userId === user.id,
+					(p: GamePlayer) => p.userId === user.id,
 				);
 
 				if (!currentPlayer || !currentPlayer.role) {
@@ -113,7 +108,7 @@ export default function GamePlayPage() {
 		socket.emit(SocketEvent.JOIN_GAME, gameCode);
 
 		// Listen for game updates
-		const handleGameUpdate = (data: { game: GameState }) => {
+		const handleGameUpdate = (data: { game: GameWithRelations }) => {
 			const { game } = data;
 			setGameState({
 				players: game.players,

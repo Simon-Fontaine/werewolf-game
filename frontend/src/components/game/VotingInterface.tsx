@@ -1,12 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSocket } from "@/hooks/useSocket";
-import { type Player, SocketEvent } from "@shared/types";
+import { SocketEvent } from "@shared/types";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
+import type { GamePlayer } from "../../../generated/prisma";
 
 interface VotingInterfaceProps {
-	players: Player[];
+	players: GamePlayer[];
 }
 
 export function VotingInterface({ players }: VotingInterfaceProps) {

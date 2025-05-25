@@ -1,2 +1,1 @@
-# werewolf-game
-
+# Werewolf

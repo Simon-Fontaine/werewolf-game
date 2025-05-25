@@ -19,6 +19,8 @@
 
 # production
 /build
+/generated
+/dist
 
 # misc
 .DS_Store

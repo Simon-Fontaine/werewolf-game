@@ -1,20 +1,20 @@
-import {
-	type ApiResponse,
-	GamePhase,
-	type GameSettings,
-	type GameState,
-	type Player,
-	type Role,
-} from "@shared/types";
+import type { ApiResponse, GameSettings } from "@shared/types";
 import axios from "axios";
 import { create } from "zustand";
+import {
+	type Game,
+	GamePhase,
+	type GamePlayer,
+	Prisma,
+	type Role,
+} from "../../generated/prisma";
 import { useAuthStore } from "./authStore";
 
 interface GameStore {
 	// Current game state
 	gameId: string | null;
 	gameCode: string | null;
-	players: Player[];
+	players: GamePlayer[];
 	phase: GamePhase;
 	dayNumber: number;
 	settings: GameSettings | null;
@@ -35,6 +35,17 @@ interface GameStore {
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
+const gameWithRelations = Prisma.validator<Prisma.GameDefaultArgs>()({
+	include: {
+		players: true,
+		events: true,
+		votes: true,
+		actions: true,
+	},
+});
+
+export type GameWithRelations = Prisma.GameGetPayload<typeof gameWithRelations>;
 
 const api = axios.create({
 	baseURL: API_URL,
@@ -71,7 +82,7 @@ export const useGameStore = create<GameStore>((set) => ({
 		set({ isLoading: true, error: null });
 		try {
 			const locale = useAuthStore.getState().user?.locale || "en";
-			const response = await api.post<ApiResponse<{ game: GameState }>>(
+			const response = await api.post<ApiResponse<{ game: GameWithRelations }>>(
 				"/api/games/create",
 				{
 					settings,
@@ -85,7 +96,7 @@ export const useGameStore = create<GameStore>((set) => ({
 					gameId: game.id,
 					gameCode: game.code,
 					players: game.players,
-					settings: game.settings,
+					settings: game.settings as unknown as GameSettings,
 					phase: game.phase,
 					dayNumber: game.dayNumber,
 					status: game.status,
@@ -109,7 +120,7 @@ export const useGameStore = create<GameStore>((set) => ({
 		set({ isLoading: true, error: null });
 		try {
 			const response = await api.post<
-				ApiResponse<{ game: GameState; player: Player }>
+				ApiResponse<{ game: GameWithRelations; player: GamePlayer }>
 			>("/api/games/join", { code });
 
 			if (response.data.success && response.data.data) {
@@ -117,7 +128,8 @@ export const useGameStore = create<GameStore>((set) => ({
 				set({
 					gameId: game.id,
 					gameCode: game.code,
-					settings: game.settings,
+					settings: game.settings as unknown as GameSettings,
+					players: game.players,
 					status: game.status,
 					isHost: player.isHost,
 					isLoading: false,

@@ -1,8 +1,8 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { useGameStore } from "@/stores/gameStore";
-import { GamePhase } from "@shared/types";
 import { Clock } from "lucide-react";
 import { useEffect, useState } from "react";
+import { GamePhase } from "../../../generated/prisma";
 
 interface GameTimerProps {
 	phase: GamePhase;

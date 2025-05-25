@@ -5,8 +5,8 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { Role } from "@shared/types";
 import { useTranslations } from "next-intl";
+import { Role } from "../../../generated/prisma";
 
 interface RoleCardProps {
 	role: Role;

@@ -1,20 +1,36 @@
-import { Router } from "express";
 import {
 	createGame,
 	getGame,
 	getUserGames,
+	getUserStats,
+	healthCheck,
 	joinGame,
-} from "../controllers/gameController";
-import { authenticate } from "../middleware/auth";
+	leaveGame,
+} from "@/controllers/gameController";
+import { requiredAuthentication } from "@/middleware/auth";
+import { rateLimiter } from "@/middleware/rateLimiter";
+import { Router } from "express";
 
 const router = Router();
 
-// All game routes require authentication
-router.use(authenticate);
+// Apply authentication to all routes
+router.use(requiredAuthentication);
 
-router.post("/create", createGame);
-router.post("/join", joinGame);
+// Game management routes
+router.post("/create", rateLimiter.gameCreate, createGame);
+
+router.post("/join", rateLimiter.gameJoin, joinGame);
+
+router.post("/:code/leave", leaveGame);
+
+// Game information routes
 router.get("/my-games", getUserGames);
+
+router.get("/my-stats", getUserStats);
+
 router.get("/:code", getGame);
+
+// Health check (no rate limiting needed)
+router.get("/health", healthCheck);
 
 export default router;

@@ -2,7 +2,6 @@ import type { ApiResponse } from "@shared/types";
 import type { NextFunction, Request, Response } from "express";
 import { verifyAccessToken } from "../utils/auth";
 
-// Extend Express Request type
 declare global {
 	namespace Express {
 		interface Request {
@@ -15,18 +14,19 @@ declare global {
 	}
 }
 
-export const authenticate = (
+export function requiredAuthentication(
 	req: Request,
 	res: Response,
 	next: NextFunction,
-): void => {
+): void {
 	try {
 		const authHeader = req.headers.authorization;
 		if (!authHeader || !authHeader.startsWith("Bearer ")) {
 			res.status(401).json({
 				success: false,
-				error: "No token provided",
+				message: "Authentication token is required",
 			} as ApiResponse);
+
 			return;
 		}
 
@@ -41,18 +41,19 @@ export const authenticate = (
 
 		next();
 	} catch (error) {
+		console.error("Authentication error:", error);
 		res.status(401).json({
 			success: false,
-			error: "Invalid or expired token",
+			message: "Authentication failed",
 		} as ApiResponse);
 	}
-};
+}
 
-export const optionalAuthenticate = (
+export function optionalAuthentication(
 	req: Request,
 	res: Response,
 	next: NextFunction,
-): void => {
+) {
 	try {
 		const authHeader = req.headers.authorization;
 		if (authHeader?.startsWith("Bearer ")) {
@@ -66,8 +67,8 @@ export const optionalAuthenticate = (
 			};
 		}
 	} catch (error) {
-		// Ignore errors for optional auth
+		console.error("Optional authentication error:", error);
+	} finally {
+		next();
 	}
-
-	next();
-};
+}

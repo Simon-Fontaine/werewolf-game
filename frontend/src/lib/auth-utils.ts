@@ -1,5 +1,5 @@
-import type { User } from "@/stores/authStore";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import type { User } from "../../generated/prisma";
 
 export const getAuthRedirectUrl = (
 	currentPath: string,
