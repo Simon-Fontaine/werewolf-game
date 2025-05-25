@@ -1,15 +1,24 @@
 {
-	"name": "werewolf",
-	"version": "1.0.0",
-	"private": true,
-	"scripts": {
-		"install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
-		"dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-		"dev:backend": "cd backend && npm run dev",
-		"dev:frontend": "cd frontend && npm run dev",
-		"sync:shared": "node sync-shared.js"
-	},
-	"devDependencies": {
-		"concurrently": "^9.1.2"
-	}
+  "name": "werewolf-game",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:shared\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:shared": "npm run dev -w @werewolf/shared",
+    "dev:backend": "npm run dev -w @werewolf/backend",
+    "dev:frontend": "npm run dev -w @werewolf/frontend",
+    "build": "npm run build:shared && npm run build:backend && npm run build:frontend",
+    "build:shared": "npm run build -w @werewolf/shared",
+    "build:backend": "npm run build -w @werewolf/backend",
+    "build:frontend": "npm run build -w @werewolf/frontend",
+    "clean": "npm run clean --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3",
+    "@biomejs/biome": "1.9.4"
+  }
 }
