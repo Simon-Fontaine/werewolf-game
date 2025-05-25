@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String?   @unique
+  username      String    @unique
+  passwordHash  String?
+  isGuest       Boolean   @default(false)
+  locale        String    @default("en")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  sessions      Session[]
+  playerProfiles GamePlayer[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Game {
+  id            String      @id @default(cuid())
+  code          String      @unique
+  status        GameStatus  @default(LOBBY)
+  phase         GamePhase   @default(WAITING)
+  dayNumber     Int         @default(0)
+  settings      Json
+  locale        String      @default("en")
+  winningSide   Side?
+  startedAt     DateTime?
+  endedAt       DateTime?
+  createdAt     DateTime    @default(now())
+  
+  players       GamePlayer[]
+  events        GameEvent[]
+  votes         Vote[]
+  actions       GameAction[]
+}
+
+model GamePlayer {
+  id            String      @id @default(cuid())
+  gameId        String
+  userId        String
+  playerNumber  Int
+  nickname      String
+  role          Role?
+  isAlive       Boolean     @default(true)
+  isHost        Boolean     @default(false)
+  joinedAt      DateTime    @default(now())
+  
+  game          Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user          User        @relation(fields: [userId], references: [id])
+  votesCast     Vote[]      @relation("VoterRelation")
+  votesReceived Vote[]      @relation("TargetRelation")
+  actions       GameAction[]
+  
+  @@unique([gameId, userId])
+  @@unique([gameId, playerNumber])
+}
+
+model Vote {
+  id            String      @id @default(cuid())
+  gameId        String
+  voterId       String
+  targetId      String?     // null for skip vote
+  phase         GamePhase
+  dayNumber     Int
+  createdAt     DateTime    @default(now())
+  
+  game          Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  voter         GamePlayer  @relation("VoterRelation", fields: [voterId], references: [id])
+  target        GamePlayer? @relation("TargetRelation", fields: [targetId], references: [id])
+  
+  @@unique([gameId, voterId, phase, dayNumber])
+}
+
+model GameAction {
+  id            String      @id @default(cuid())
+  gameId        String
+  playerId      String
+  action        ActionType
+  targetId      String?
+  phase         GamePhase
+  dayNumber     Int
+  processed     Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  
+  game          Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player        GamePlayer  @relation(fields: [playerId], references: [id])
+}
+
+model GameEvent {
+  id            String      @id @default(cuid())
+  gameId        String
+  type          EventType
+  data          Json
+  dayNumber     Int
+  phase         GamePhase
+  createdAt     DateTime    @default(now())
+  
+  game          Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+}
+
+enum GameStatus {
+  LOBBY
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum GamePhase {
+  WAITING
+  NIGHT
+  DISCUSSION
+  VOTING
+  EXECUTION
+}
+
+enum Role {
+  VILLAGER
+  WEREWOLF
+  SEER
+  DOCTOR
+  HUNTER
+  WITCH
+}
+
+enum Side {
+  VILLAGE
+  WEREWOLF
+  LOVERS
+  NONE
+}
+
+enum ActionType {
+  WEREWOLF_KILL
+  SEER_CHECK
+  DOCTOR_SAVE
+  WITCH_KILL
+  WITCH_SAVE
+  HUNTER_SHOOT
+}
+
+enum EventType {
+  GAME_STARTED
+  PHASE_CHANGED
+  PLAYER_KILLED
+  PLAYER_VOTED
+  PLAYER_ELIMINATED
+  ROLE_REVEALED
+  GAME_ENDED
+}

@@ -1,0 +1,19 @@
+{
+  "errors": {
+    "unauthorized": "Unauthorized",
+    "invalidCredentials": "Invalid credentials",
+    "userExists": "User already exists",
+    "gameNotFound": "Game not found",
+    "gameFull": "Game is full",
+    "gameStarted": "Game already started",
+    "minPlayersRequired": "Need at least {{min}} players to start",
+    "onlyHostCanStart": "Only the host can start the game",
+    "internalError": "Internal server error"
+  },
+  "success": {
+    "loggedOut": "Logged out successfully",
+    "gameCreated": "Game created successfully",
+    "gameJoined": "Joined game successfully",
+    "gameStarted": "Game started successfully"
+  }
+}

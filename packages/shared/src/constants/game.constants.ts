@@ -1,18 +1,18 @@
 import { type GameSettings, Role } from "../types";
 
 export const DEFAULT_GAME_SETTINGS: GameSettings = {
-	minPlayers: 5,
-	maxPlayers: 20,
-	discussionTime: 180, // 3 minutes
-	votingTime: 60, // 1 minute
-	roles: {
-		[Role.WEREWOLF]: 1,
-		[Role.SEER]: 1,
-		[Role.DOCTOR]: 0,
-		[Role.HUNTER]: 0,
-		[Role.WITCH]: 0,
-		[Role.VILLAGER]: 3,
-	},
+  minPlayers: 5,
+  maxPlayers: 20,
+  discussionTime: 180, // 3 minutes
+  votingTime: 60, // 1 minute
+  roles: {
+    [Role.WEREWOLF]: 1,
+    [Role.SEER]: 1,
+    [Role.DOCTOR]: 0,
+    [Role.HUNTER]: 0,
+    [Role.WITCH]: 0,
+    [Role.VILLAGER]: 3,
+  },
 };
 
 export const GAME_CODE_LENGTH = 6;

@@ -2,40 +2,40 @@ import { z } from "zod";
 
 export const emailSchema = z.string().email().max(100);
 export const usernameSchema = z
-	.string()
-	.min(3)
-	.max(30)
-	.regex(/^[a-zA-Z0-9_-]+$/);
+  .string()
+  .min(3)
+  .max(30)
+  .regex(/^[a-zA-Z0-9_-]+$/);
 export const passwordSchema = z.string().min(8);
 export const localeSchema = z.enum(["en", "fr"]).default("en");
 
 export const registerSchema = z.object({
-	email: emailSchema,
-	username: usernameSchema,
-	password: passwordSchema,
-	locale: localeSchema.optional(),
+  email: emailSchema,
+  username: usernameSchema,
+  password: passwordSchema,
+  locale: localeSchema.optional(),
 });
 
 export const loginSchema = z.object({
-	username: z.string(),
-	password: z.string(),
+  username: z.string(),
+  password: z.string(),
 });
 
 export const createGuestSchema = z.object({
-	locale: localeSchema.optional(),
+  locale: localeSchema.optional(),
 });
 
 export const refreshTokenSchema = z.object({
-	refreshToken: z.string(),
+  refreshToken: z.string(),
 });
 
 export const convertGuestSchema = z.object({
-	email: emailSchema,
-	password: passwordSchema,
+  email: emailSchema,
+  password: passwordSchema,
 });
 
 export const updateProfileSchema = z.object({
-	locale: localeSchema.optional(),
+  locale: localeSchema.optional(),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

@@ -1,20 +1,20 @@
 {
-	"name": "@werewolf/shared",
-	"version": "1.0.0",
-	"private": true,
-	"main": "./dist/index.js",
-	"types": "./dist/index.d.ts",
-	"scripts": {
-		"dev": "tsc --watch",
-		"build": "tsc",
-		"clean": "rm -rf dist",
-		"typecheck": "tsc --noEmit"
-	},
-	"devDependencies": {
-		"typescript": "^5.8.3",
-		"@types/node": "^22.15.21"
-	},
-	"dependencies": {
-		"zod": "^3.25.28"
-	}
+  "name": "@werewolf/shared",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "dev": "tsc --watch",
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "@types/node": "^22.15.21"
+  },
+  "dependencies": {
+    "zod": "^3.25.28"
+  }
 }

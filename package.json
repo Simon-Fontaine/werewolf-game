@@ -14,7 +14,8 @@
     "build:frontend": "npm run build -w @werewolf/frontend",
     "clean": "npm run clean --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "format": "biome format --write ./packages"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
