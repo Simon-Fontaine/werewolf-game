@@ -37,7 +37,7 @@ model Game {
   status        GameStatus  @default(LOBBY)
   phase         GamePhase   @default(WAITING)
   dayNumber     Int         @default(0)
-  settings      Json
+  settings      Json        // GameSettings type
   locale        String      @default("en")
   winningSide   Side?
   startedAt     DateTime?
@@ -48,6 +48,9 @@ model Game {
   events        GameEvent[]
   votes         Vote[]
   actions       GameAction[]
+  roleStates    RoleState[]
+  timers        GameTimer[]
+  messages      ChatMessage[]
 }
 
 model GamePlayer {
@@ -59,6 +62,7 @@ model GamePlayer {
   role          Role?
   isAlive       Boolean     @default(true)
   isHost        Boolean     @default(false)
+  disconnectedAt DateTime?  // For reconnection handling
   joinedAt      DateTime    @default(now())
   
   game          Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
@@ -66,6 +70,10 @@ model GamePlayer {
   votesCast     Vote[]      @relation("VoterRelation")
   votesReceived Vote[]      @relation("TargetRelation")
   actions       GameAction[]
+  roleState     RoleState?
+  lover         LoverPair?  @relation("Lover1")
+  lovedBy       LoverPair?  @relation("Lover2")
+  messages      ChatMessage[]
   
   @@unique([gameId, userId])
   @@unique([gameId, playerNumber])
@@ -78,13 +86,14 @@ model Vote {
   targetId      String?     // null for skip vote
   phase         GamePhase
   dayNumber     Int
+  round         Int         @default(1) // For multiple voting rounds
   createdAt     DateTime    @default(now())
   
   game          Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
   voter         GamePlayer  @relation("VoterRelation", fields: [voterId], references: [id])
   target        GamePlayer? @relation("TargetRelation", fields: [targetId], references: [id])
   
-  @@unique([gameId, voterId, phase, dayNumber])
+  @@unique([gameId, voterId, phase, dayNumber, round])
 }
 
 model GameAction {
@@ -93,9 +102,11 @@ model GameAction {
   playerId      String
   action        ActionType
   targetId      String?
+  secondaryTargetId String? // For cupid linking lovers
   phase         GamePhase
   dayNumber     Int
   processed     Boolean     @default(false)
+  result        Json?       // Store action results
   createdAt     DateTime    @default(now())
   
   game          Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
@@ -107,11 +118,79 @@ model GameEvent {
   gameId        String
   type          EventType
   data          Json
+  visibility    EventVisibility @default(PUBLIC)
+  visibleTo     String[]    // Player IDs who can see this event
   dayNumber     Int
   phase         GamePhase
   createdAt     DateTime    @default(now())
   
   game          Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+}
+
+// Track role-specific states
+model RoleState {
+  id            String      @id @default(cuid())
+  gameId        String
+  playerId      String      @unique
+  role          Role
+  
+  // Witch specific
+  healPotionUsed    Boolean @default(false)
+  poisonPotionUsed  Boolean @default(false)
+  
+  // Hunter specific
+  hasShot           Boolean @default(false)
+  
+  // Cupid/Lovers
+  isLover           Boolean @default(false)
+  
+  // Additional role states can be added here
+  customData        Json?   // For extensibility
+  
+  game          Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player        GamePlayer  @relation(fields: [playerId], references: [id])
+}
+
+model LoverPair {
+  id            String      @id @default(cuid())
+  gameId        String
+  player1Id     String      @unique
+  player2Id     String      @unique
+  createdAt     DateTime    @default(now())
+  
+  player1       GamePlayer  @relation("Lover1", fields: [player1Id], references: [id])
+  player2       GamePlayer  @relation("Lover2", fields: [player2Id], references: [id])
+}
+
+// Track phase timers
+model GameTimer {
+  id            String      @id @default(cuid())
+  gameId        String
+  phase         GamePhase
+  dayNumber     Int
+  startedAt     DateTime    @default(now())
+  duration      Int         // seconds
+  pausedAt      DateTime?
+  
+  game          Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  
+  @@unique([gameId, phase, dayNumber])
+}
+
+// Chat messages
+model ChatMessage {
+  id            String      @id @default(cuid())
+  gameId        String
+  playerId      String
+  content       String
+  type          MessageType @default(CHAT)
+  isAlive       Boolean     // Was the player alive when sending
+  dayNumber     Int
+  phase         GamePhase
+  createdAt     DateTime    @default(now())
+  
+  game          Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player        GamePlayer  @relation(fields: [playerId], references: [id])
 }
 
 enum GameStatus {
@@ -127,6 +206,7 @@ enum GamePhase {
   DISCUSSION
   VOTING
   EXECUTION
+  GAME_OVER
 }
 
 enum Role {
@@ -136,6 +216,10 @@ enum Role {
   DOCTOR
   HUNTER
   WITCH
+  CUPID
+  LITTLE_GIRL
+  THIEF
+  SHERIFF
 }
 
 enum Side {
@@ -152,6 +236,9 @@ enum ActionType {
   WITCH_KILL
   WITCH_SAVE
   HUNTER_SHOOT
+  CUPID_LINK
+  SHERIFF_REVEAL
+  THIEF_CHOOSE
 }
 
 enum EventType {
@@ -161,5 +248,23 @@ enum EventType {
   PLAYER_VOTED
   PLAYER_ELIMINATED
   ROLE_REVEALED
+  LOVERS_REVEALED
+  POTION_USED
   GAME_ENDED
+  PLAYER_DISCONNECTED
+  PLAYER_RECONNECTED
+}
+
+enum EventVisibility {
+  PUBLIC      // All players
+  PRIVATE     // Specific players only
+  ROLE        // Players with specific roles
+  DEAD        // Dead players only
+}
+
+enum MessageType {
+  CHAT
+  SYSTEM
+  DEATH_MESSAGE
+  ROLE_ACTION
 }

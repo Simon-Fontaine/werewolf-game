@@ -1,12 +1,19 @@
 import type { Prisma } from "@prisma/client";
-import type { GamePhase, GameSettings, GameStatus } from "@werewolf/shared";
+import type { DefaultArgs } from "@prisma/client/runtime/library";
+import {
+  type GamePhase,
+  type GameSettings,
+  GameStatus,
+  type MessageType,
+  type Role,
+} from "@werewolf/shared";
 import {
   type PrismaTransactionClient,
   prisma,
 } from "../../common/utils/prisma";
 
 export class GameRepository {
-  private readonly defaultInclude = {
+  private readonly gameInclude = {
     players: {
       orderBy: { playerNumber: "asc" as const },
     },
@@ -20,13 +27,27 @@ export class GameRepository {
     actions: {
       where: { processed: false },
     },
-  };
+    roleStates: true,
+    timers: {
+      orderBy: { createdAt: "desc" as const },
+      take: 1,
+    },
+    loverPairs: true,
+  } as Prisma.GameInclude<DefaultArgs>;
 
+  // Basic CRUD operations
   async findById(id: string, tx?: PrismaTransactionClient) {
     const client = tx || prisma;
     return client.game.findUnique({
       where: { id },
-      include: this.defaultInclude,
+    });
+  }
+
+  async findByIdWithRelations(id: string, tx?: PrismaTransactionClient) {
+    const client = tx || prisma;
+    return client.game.findUnique({
+      where: { id },
+      include: this.gameInclude,
     });
   }
 
@@ -34,7 +55,14 @@ export class GameRepository {
     const client = tx || prisma;
     return client.game.findUnique({
       where: { code },
-      include: this.defaultInclude,
+    });
+  }
+
+  async findByCodeWithRelations(code: string, tx?: PrismaTransactionClient) {
+    const client = tx || prisma;
+    return client.game.findUnique({
+      where: { code },
+      include: this.gameInclude,
     });
   }
 
@@ -63,7 +91,7 @@ export class GameRepository {
           },
         },
       },
-      include: this.defaultInclude,
+      include: this.gameInclude,
     });
   }
 
@@ -76,7 +104,7 @@ export class GameRepository {
     return client.game.update({
       where: { id },
       data,
-      include: this.defaultInclude,
+      include: this.gameInclude,
     });
   }
 
@@ -87,6 +115,203 @@ export class GameRepository {
     });
   }
 
+  // Player operations
+  async addPlayer(
+    gameId: string,
+    data: {
+      userId: string;
+      nickname: string;
+      playerNumber: number;
+    },
+    tx?: PrismaTransactionClient,
+  ) {
+    const client = tx || prisma;
+    return client.gamePlayer.create({
+      data: {
+        gameId,
+        ...data,
+      },
+    });
+  }
+
+  async removePlayer(playerId: string, tx?: PrismaTransactionClient) {
+    const client = tx || prisma;
+    return client.gamePlayer.delete({
+      where: { id: playerId },
+    });
+  }
+
+  async updatePlayer(
+    playerId: string,
+    data: Prisma.GamePlayerUpdateInput,
+    tx?: PrismaTransactionClient,
+  ) {
+    const client = tx || prisma;
+    return client.gamePlayer.update({
+      where: { id: playerId },
+      data,
+    });
+  }
+
+  // Role state operations
+  async createRoleState(
+    data: {
+      gameId: string;
+      playerId: string;
+      role: Role;
+    },
+    tx?: PrismaTransactionClient,
+  ) {
+    const client = tx || prisma;
+    return client.roleState.create({
+      data: {
+        ...data,
+      },
+    });
+  }
+
+  async updateRoleState(
+    id: string,
+    data: Prisma.RoleStateUpdateInput,
+    tx?: PrismaTransactionClient,
+  ) {
+    const client = tx || prisma;
+    return client.roleState.update({
+      where: { id },
+      data,
+    });
+  }
+
+  // Event operations
+  async createEvent(
+    data: Prisma.GameEventCreateInput,
+    tx?: PrismaTransactionClient,
+  ) {
+    const client = tx || prisma;
+    return client.gameEvent.create({ data });
+  }
+
+  // Vote operations
+  async createVote(data: Prisma.VoteCreateInput, tx?: PrismaTransactionClient) {
+    const client = tx || prisma;
+    return client.vote.create({ data });
+  }
+
+  async updateVote(
+    id: string,
+    data: Prisma.VoteUpdateInput,
+    tx?: PrismaTransactionClient,
+  ) {
+    const client = tx || prisma;
+    return client.vote.update({
+      where: { id },
+      data,
+    });
+  }
+
+  async findVotesForPhase(
+    gameId: string,
+    phase: GamePhase,
+    dayNumber: number,
+    tx?: PrismaTransactionClient,
+  ) {
+    const client = tx || prisma;
+    return client.vote.findMany({
+      where: {
+        gameId,
+        phase,
+        dayNumber,
+      },
+      include: {
+        voter: true,
+        target: true,
+      },
+    });
+  }
+
+  // Action operations
+  async createAction(
+    data: Prisma.GameActionCreateInput,
+    tx?: PrismaTransactionClient,
+  ) {
+    const client = tx || prisma;
+    return client.gameAction.create({ data });
+  }
+
+  async updateAction(
+    id: string,
+    data: Prisma.GameActionUpdateInput,
+    tx?: PrismaTransactionClient,
+  ) {
+    const client = tx || prisma;
+    return client.gameAction.update({
+      where: { id },
+      data,
+    });
+  }
+
+  // Timer operations
+  async createTimer(
+    data: {
+      gameId: string;
+      phase: GamePhase;
+      dayNumber: number;
+      duration: number;
+    },
+    tx?: PrismaTransactionClient,
+  ) {
+    const client = tx || prisma;
+    return client.gameTimer.create({
+      data,
+    });
+  }
+
+  // Chat operations
+  async createChatMessage(
+    data: {
+      gameId: string;
+      playerId: string;
+      content: string;
+      type: MessageType;
+      isAlive: boolean;
+      dayNumber: number;
+      phase: GamePhase;
+    },
+    tx?: PrismaTransactionClient,
+  ) {
+    const client = tx || prisma;
+    return client.chatMessage.create({
+      data,
+    });
+  }
+
+  // Lover operations
+  async findLoverPair(playerId: string, tx?: PrismaTransactionClient) {
+    const client = tx || prisma;
+    return client.loverPair.findFirst({
+      where: {
+        OR: [{ player1Id: playerId }, { player2Id: playerId }],
+      },
+    });
+  }
+
+  async createLoverPair(
+    gameId: string,
+    player1Id: string,
+    player2Id: string,
+    tx?: PrismaTransactionClient,
+  ) {
+    const client = tx || prisma;
+    return client.loverPair.create({
+      data: {
+        gameId,
+        player1Id,
+        player2Id,
+      },
+    });
+  }
+
+  // Query operations
   async findUserGames(
     userId: string,
     options: {
@@ -133,82 +358,86 @@ export class GameRepository {
     return !!game;
   }
 
-  async addPlayer(
-    gameId: string,
-    data: {
-      userId: string;
-      nickname: string;
-      playerNumber: number;
-    },
-    tx?: PrismaTransactionClient,
-  ) {
-    const client = tx || prisma;
-    return client.gamePlayer.create({
-      data: {
-        gameId,
-        ...data,
-      },
-    });
-  }
+  async getUserStats(userId: string) {
+    const [totalGames, wins, gamesAsWerewolf, gamesAsVillager] =
+      await Promise.all([
+        // Total games
+        prisma.gamePlayer.count({
+          where: { userId },
+        }),
 
-  async removePlayer(playerId: string, tx?: PrismaTransactionClient) {
-    const client = tx || prisma;
-    return client.gamePlayer.delete({
-      where: { id: playerId },
-    });
-  }
+        // Wins
+        prisma.gamePlayer.count({
+          where: {
+            userId,
+            game: {
+              status: GameStatus.COMPLETED,
+              OR: [
+                // Village wins
+                {
+                  winningSide: "VILLAGE",
+                  players: {
+                    some: {
+                      userId,
+                      role: {
+                        not: "WEREWOLF",
+                      },
+                    },
+                  },
+                },
+                // Werewolf wins
+                {
+                  winningSide: "WEREWOLF",
+                  players: {
+                    some: {
+                      userId,
+                      role: "WEREWOLF",
+                    },
+                  },
+                },
+                // Lover wins
+                {
+                  winningSide: "LOVERS",
+                  players: {
+                    some: {
+                      userId,
+                      roleState: {
+                        isLover: true,
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        }),
 
-  async updatePlayer(
-    playerId: string,
-    data: Prisma.GamePlayerUpdateInput,
-    tx?: PrismaTransactionClient,
-  ) {
-    const client = tx || prisma;
-    return client.gamePlayer.update({
-      where: { id: playerId },
-      data,
-    });
-  }
+        // Games as werewolf
+        prisma.gamePlayer.count({
+          where: {
+            userId,
+            role: "WEREWOLF",
+          },
+        }),
 
-  async createEvent(
-    data: Prisma.GameEventCreateInput,
-    tx?: PrismaTransactionClient,
-  ) {
-    const client = tx || prisma;
-    return client.gameEvent.create({ data });
-  }
+        // Games as villager
+        prisma.gamePlayer.count({
+          where: {
+            userId,
+            role: {
+              not: "WEREWOLF",
+            },
+          },
+        }),
+      ]);
 
-  async createVote(data: Prisma.VoteCreateInput, tx?: PrismaTransactionClient) {
-    const client = tx || prisma;
-    return client.vote.create({ data });
-  }
-
-  async createAction(
-    data: Prisma.GameActionCreateInput,
-    tx?: PrismaTransactionClient,
-  ) {
-    const client = tx || prisma;
-    return client.gameAction.create({ data });
-  }
-
-  async findVotesForPhase(
-    gameId: string,
-    phase: GamePhase,
-    dayNumber: number,
-    tx?: PrismaTransactionClient,
-  ) {
-    const client = tx || prisma;
-    return client.vote.findMany({
-      where: {
-        gameId,
-        phase,
-        dayNumber,
-      },
-      include: {
-        voter: true,
-        target: true,
-      },
-    });
+    return {
+      totalGames,
+      wins,
+      winRate: totalGames > 0 ? (wins / totalGames) * 100 : 0,
+      gamesAsWerewolf,
+      gamesAsVillager,
+    };
   }
 }
 

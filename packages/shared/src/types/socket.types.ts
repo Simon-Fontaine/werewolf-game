@@ -34,6 +34,7 @@ export enum SocketEvent {
   PLAYER_ELIMINATED = "player-eliminated",
   PLAYER_ROLE_REVEALED = "player-role-revealed",
   ROLE_ASSIGNED = "role-assigned",
+  PLAYER_DISCONNECTED = "player-disconnected",
 
   // Game actions
   VOTE = "vote",

@@ -1,14 +1,14 @@
-import { prisma } from "@/common/utils/prisma";
-import type { GamePlayer, Prisma } from "@prisma/client";
 import {
   type ActionType,
-  ErrorCode,
+  type CreateGameInput,
   GamePhase,
+  type GameSettings,
+  GameStatus,
   Role,
   SocketEvent,
 } from "@werewolf/shared";
+import { toGameStateForPlayer } from "../../../common/types/mapper";
 import { logger } from "../../../common/utils/logger";
-import { gameRepository } from "../../game/game.repository";
 import { gameService } from "../../game/game.service";
 import type { AuthenticatedSocket } from "../socket.types";
 import { BaseSocketHandler } from "./base.handler";
@@ -16,6 +16,10 @@ import { BaseSocketHandler } from "./base.handler";
 export class GameSocketHandler extends BaseSocketHandler {
   handleConnection(socket: AuthenticatedSocket) {
     // Game lifecycle events
+    socket.on(SocketEvent.CREATE_GAME, (data: CreateGameInput) =>
+      this.handleCreateGame(socket, data),
+    );
+
     socket.on(SocketEvent.JOIN_GAME, (gameCode: string) =>
       this.handleJoinGame(socket, gameCode),
     );
@@ -31,56 +35,80 @@ export class GameSocketHandler extends BaseSocketHandler {
 
     socket.on(
       SocketEvent.NIGHT_ACTION,
-      (data: { action: ActionType; targetId: string }) =>
-        this.handleNightAction(socket, data),
+      (data: {
+        action: ActionType;
+        targetId: string;
+        secondaryTargetId?: string;
+      }) => this.handleNightAction(socket, data),
+    );
+
+    // Chat
+    socket.on(SocketEvent.SEND_MESSAGE, (message: string) =>
+      this.handleChatMessage(socket, message),
     );
 
     // Handle disconnect
     socket.on("disconnect", () => this.handleDisconnect(socket));
   }
 
+  private async handleCreateGame(
+    socket: AuthenticatedSocket,
+    data: CreateGameInput,
+  ) {
+    try {
+      logger.info(`${socket.username} creating new game`);
+
+      const game = await gameService.createGame(
+        socket.userId,
+        socket.username,
+        data,
+      );
+
+      // Join the game room
+      await this.joinRoom(socket, game.id);
+
+      // Send game state to creator
+      socket.emit(SocketEvent.GAME_CREATED, {
+        game: toGameStateForPlayer(game, socket.userId),
+      });
+
+      logger.info(`Game ${game.code} created by ${socket.username}`);
+    } catch (error) {
+      logger.error("Error creating game:", error);
+      this.sendError(
+        socket,
+        error instanceof Error ? error.message : "Failed to create game",
+      );
+    }
+  }
+
   private async handleJoinGame(socket: AuthenticatedSocket, gameCode: string) {
     try {
       logger.info(`${socket.username} attempting to join game ${gameCode}`);
 
-      // Get game
-      const game = await gameRepository.findByCode(gameCode);
-      if (!game) {
-        return this.sendError(
-          socket,
-          "Game not found",
-          ErrorCode.GAME_NOT_FOUND,
-        );
-      }
-
-      // Check if player is in game
-      const player = game.players.find(
-        (p: GamePlayer) => p.userId === socket.userId,
+      const result = await gameService.joinGame(
+        gameCode,
+        socket.userId,
+        socket.username,
       );
-      if (!player) {
-        return this.sendError(
-          socket,
-          "You are not in this game",
-          ErrorCode.NOT_IN_GAME,
-        );
-      }
 
       // Join room
-      await this.joinRoom(socket, game.id);
+      await this.joinRoom(socket, result.game.id);
 
       // Send current game state to joining player
-      const gameState = this.formatGameState(game, socket.userId);
-      socket.emit(SocketEvent.GAME_UPDATE, { game: gameState });
+      socket.emit(SocketEvent.GAME_UPDATE, {
+        game: toGameStateForPlayer(result.game, socket.userId),
+      });
 
       // Notify others
       this.emitToRoomExcept(
-        game.id,
+        result.game.id,
         SocketEvent.PLAYER_JOINED,
         {
           player: {
-            id: player.id,
-            nickname: player.nickname,
-            playerNumber: player.playerNumber,
+            id: result.player.id,
+            nickname: result.player.nickname,
+            playerNumber: result.player.playerNumber,
           },
         },
         socket.id,
@@ -89,7 +117,13 @@ export class GameSocketHandler extends BaseSocketHandler {
       logger.info(`${socket.username} joined game ${gameCode}`);
     } catch (error) {
       logger.error("Error joining game:", error);
-      this.sendError(socket, "Failed to join game");
+      this.sendError(
+        socket,
+        error instanceof Error ? error.message : "Failed to join game",
+        error instanceof Error && "code" in error
+          ? (error as Error & { code: string }).code
+          : undefined,
+      );
     }
   }
 
@@ -104,13 +138,7 @@ export class GameSocketHandler extends BaseSocketHandler {
       if (result) {
         // Notify remaining players
         this.emitToRoom(socket.gameId, SocketEvent.GAME_UPDATE, {
-          game: this.formatGameState(
-            result as unknown as Prisma.GameGetPayload<{
-              include: {
-                players: true;
-              };
-            }>,
-          ),
+          game: toGameStateForPlayer(result, ""),
         });
       } else {
         // Game was deleted
@@ -145,22 +173,24 @@ export class GameSocketHandler extends BaseSocketHandler {
         },
       });
 
-      // Send individual role assignments
+      // Send individual game states with roles
       for (const player of game.players) {
         const playerSocket = this.findSocketByUserId(player.userId);
         if (playerSocket) {
+          const gameState = toGameStateForPlayer(game, player.userId);
           playerSocket.emit(SocketEvent.ROLE_ASSIGNED, {
+            game: gameState,
             role: player.role,
-            players: game.players.map((p: GamePlayer) => ({
-              id: p.id,
-              nickname: p.nickname,
-              playerNumber: p.playerNumber,
-              isAlive: p.isAlive,
-              role: p.userId === player.userId ? p.role : undefined,
-            })),
           });
         }
       }
+
+      // Start night phase timer
+      this.startPhaseTimer(
+        game.id,
+        GamePhase.NIGHT,
+        (game.settings as unknown as GameSettings).nightTime || 30,
+      );
 
       logger.info(`Game ${socket.gameId} started by ${socket.username}`);
     } catch (error) {
@@ -181,61 +211,22 @@ export class GameSocketHandler extends BaseSocketHandler {
         return this.sendError(socket, "Not in a game");
       }
 
-      const game = await gameRepository.findById(socket.gameId);
-      if (!game) {
-        return this.sendError(socket, "Game not found");
-      }
-
-      // Validate game phase
-      if (game.phase !== GamePhase.VOTING) {
-        return this.sendError(socket, "Not in voting phase");
-      }
-
-      // Get player
-      const player = game.players.find(
-        (p: GamePlayer) => p.userId === socket.userId,
+      const result = await gameService.castVote(
+        socket.gameId,
+        socket.userId,
+        data.targetId,
       );
-      if (!player || !player.isAlive) {
-        return this.sendError(socket, "You cannot vote");
-      }
-
-      // Validate target
-      if (data.targetId) {
-        const target = game.players.find(
-          (p: GamePlayer) => p.id === data.targetId,
-        );
-        if (!target || !target.isAlive) {
-          return this.sendError(socket, "Invalid vote target");
-        }
-      }
-
-      // Record vote
-      await gameRepository.createVote({
-        game: { connect: { id: game.id } },
-        voter: { connect: { id: player.id } },
-        target: data.targetId ? { connect: { id: data.targetId } } : undefined,
-        phase: game.phase,
-        dayNumber: game.dayNumber,
-      });
 
       // Notify all players
       this.emitToRoom(socket.gameId, SocketEvent.VOTE_CAST, {
-        voterId: player.id,
-        voterNickname: player.nickname,
-        targetId: data.targetId,
+        voterId: result.vote.voterId,
+        targetId: result.vote.targetId,
+        votesComplete: result.allVoted,
       });
 
-      // Check if all alive players have voted
-      const alivePlayers = game.players.filter((p: GamePlayer) => p.isAlive);
-      const votes = await gameRepository.findVotesForPhase(
-        game.id,
-        game.phase as GamePhase,
-        game.dayNumber,
-      );
-
-      if (votes.length === alivePlayers.length) {
+      if (result.allVoted) {
         // Process vote results
-        await this.processVoteResults(game.id);
+        await this.processPhaseEnd(socket.gameId);
       }
 
       logger.info(`${socket.username} voted in game ${socket.gameId}`);
@@ -247,99 +238,189 @@ export class GameSocketHandler extends BaseSocketHandler {
 
   private async handleNightAction(
     socket: AuthenticatedSocket,
-    data: { action: ActionType; targetId: string },
+    data: {
+      action: ActionType;
+      targetId: string;
+      secondaryTargetId?: string;
+    },
   ) {
     try {
       if (!socket.gameId) {
         return this.sendError(socket, "Not in a game");
       }
 
-      const game = await gameRepository.findById(socket.gameId);
-      if (!game) {
-        return this.sendError(socket, "Game not found");
-      }
-
-      // Validate game phase
-      if (game.phase !== GamePhase.NIGHT) {
-        return this.sendError(socket, "Not in night phase");
-      }
-
-      // Get player
-      const player = game.players.find((p) => p.userId === socket.userId);
-      if (!player || !player.isAlive || !player.role) {
-        return this.sendError(socket, "You cannot perform actions");
-      }
-
-      // Validate action for role
-      if (!this.isValidActionForRole(player.role as Role, data.action)) {
-        return this.sendError(socket, "Invalid action for your role");
-      }
-
-      // Validate target
-      const target = game.players.find((p) => p.id === data.targetId);
-      if (!target || !target.isAlive) {
-        return this.sendError(socket, "Invalid target");
-      }
-
-      // Record action
-      await gameRepository.createAction({
-        game: { connect: { id: game.id } },
-        player: { connect: { id: player.id } },
-        action: data.action,
-        targetId: data.targetId,
-        phase: game.phase,
-        dayNumber: game.dayNumber,
-      });
+      const result = await gameService.performNightAction(
+        socket.gameId,
+        socket.userId,
+        data.action,
+        data.targetId,
+        data.secondaryTargetId,
+      );
 
       // Send confirmation to player
       socket.emit(SocketEvent.ACTION_CONFIRMED, {
         action: data.action,
         targetId: data.targetId,
+        result: result.actionResult,
       });
+
+      if (result.allActionsComplete) {
+        // Process night results
+        await this.processPhaseEnd(socket.gameId);
+      }
 
       logger.info(
         `${socket.username} performed ${data.action} in game ${socket.gameId}`,
       );
     } catch (error) {
       logger.error("Error handling night action:", error);
-      this.sendError(socket, "Failed to perform action");
+      this.sendError(
+        socket,
+        error instanceof Error ? error.message : "Failed to perform action",
+      );
+    }
+  }
+
+  private async handleChatMessage(
+    socket: AuthenticatedSocket,
+    message: string,
+  ) {
+    try {
+      if (!socket.gameId) {
+        return this.sendError(socket, "Not in a game");
+      }
+
+      const chatMessage = await gameService.sendChatMessage(
+        socket.gameId,
+        socket.userId,
+        message,
+      );
+
+      // Emit to appropriate players based on game state
+      const game = await gameService.getGameById(socket.gameId);
+      if (!game) return;
+
+      const player = game.players.find((p) => p.userId === socket.userId);
+      if (!player) return;
+
+      // Dead players can only talk to other dead players
+      if (!player.isAlive) {
+        const deadPlayers = game.players.filter((p) => !p.isAlive);
+        for (const deadPlayer of deadPlayers) {
+          const deadSocket = this.findSocketByUserId(deadPlayer.userId);
+          if (deadSocket) {
+            deadSocket.emit(SocketEvent.CHAT_MESSAGE, {
+              message: chatMessage,
+              isDeadChat: true,
+            });
+          }
+        }
+      } else {
+        // Alive players talk to all alive players
+        this.emitToRoom(socket.gameId, SocketEvent.CHAT_MESSAGE, {
+          message: chatMessage,
+          isDeadChat: false,
+        });
+      }
+    } catch (error) {
+      logger.error("Error handling chat message:", error);
+      this.sendError(socket, "Failed to send message");
     }
   }
 
   private async handleDisconnect(socket: AuthenticatedSocket) {
     if (socket.gameId) {
       logger.info(`${socket.username} disconnected from game ${socket.gameId}`);
-      // Could implement reconnection logic here
+
+      try {
+        // Mark player as disconnected
+        await gameService.markPlayerDisconnected(socket.gameId, socket.userId);
+
+        // Notify other players
+        this.emitToRoomExcept(
+          socket.gameId,
+          SocketEvent.PLAYER_DISCONNECTED,
+          {
+            userId: socket.userId,
+            nickname: socket.username,
+          },
+          socket.id,
+        );
+      } catch (error) {
+        logger.error("Error handling disconnect:", error);
+      }
     }
   }
 
-  private formatGameState(
-    game: Partial<
-      Prisma.GameGetPayload<{
-        include: {
-          players: true;
-        };
-      }>
-    >,
-    viewerId?: string,
-  ) {
-    return {
-      id: game.id,
-      code: game.code,
-      status: game.status,
-      phase: game.phase,
-      dayNumber: game.dayNumber,
-      settings: game.settings,
-      players: game.players?.map((p) => ({
-        id: p.id,
-        userId: p.userId,
-        nickname: p.nickname,
-        isHost: p.isHost,
-        isAlive: p.isAlive,
-        playerNumber: p.playerNumber,
-        role: p.userId === viewerId ? p.role : undefined,
-      })),
-    };
+  private async processPhaseEnd(gameId: string) {
+    try {
+      const result = await gameService.processPhaseEnd(gameId);
+
+      // Emit phase change to all players
+      this.emitToRoom(gameId, SocketEvent.PHASE_CHANGED, {
+        newPhase: result.newPhase,
+        dayNumber: result.dayNumber,
+        events: result.events,
+      });
+
+      // Send updated game state to each player
+      const game = await gameService.getGameById(gameId);
+      if (!game) return;
+
+      for (const player of game.players) {
+        const playerSocket = this.findSocketByUserId(player.userId);
+        if (playerSocket) {
+          const gameState = toGameStateForPlayer(game, player.userId);
+          playerSocket.emit(SocketEvent.GAME_UPDATE, { game: gameState });
+        }
+      }
+
+      // Check for game end
+      if (result.gameEnded) {
+        this.emitToRoom(gameId, SocketEvent.GAME_ENDED, {
+          winningSide: result.winningSide,
+          winners: result.winners,
+        });
+      } else {
+        // Start timer for next phase
+        const settings = game.settings as unknown as GameSettings;
+        const duration =
+          result.newPhase === GamePhase.DISCUSSION
+            ? settings.discussionTime
+            : result.newPhase === GamePhase.VOTING
+              ? settings.votingTime
+              : settings.nightTime || 30;
+
+        this.startPhaseTimer(gameId, result.newPhase, duration);
+      }
+    } catch (error) {
+      logger.error("Error processing phase end:", error);
+    }
+  }
+
+  private startPhaseTimer(gameId: string, phase: GamePhase, duration: number) {
+    // Emit timer start
+    this.emitToRoom(gameId, "timer-started", {
+      phase,
+      duration,
+      startedAt: new Date(),
+    });
+
+    // Set timeout to auto-advance phase
+    setTimeout(async () => {
+      try {
+        const game = await gameService.getGameById(gameId);
+        if (
+          game &&
+          game.phase === phase &&
+          game.status === GameStatus.IN_PROGRESS
+        ) {
+          await this.processPhaseEnd(gameId);
+        }
+      } catch (error) {
+        logger.error("Error in phase timer:", error);
+      }
+    }, duration * 1000);
   }
 
   private findSocketByUserId(userId: string): AuthenticatedSocket | undefined {
@@ -352,37 +433,4 @@ export class GameSocketHandler extends BaseSocketHandler {
     }
     return undefined;
   }
-
-  private isValidActionForRole(role: Role, action: string): boolean {
-    const validActions: Record<Role, string[]> = {
-      [Role.WEREWOLF]: ["WEREWOLF_KILL"],
-      [Role.SEER]: ["SEER_CHECK"],
-      [Role.DOCTOR]: ["DOCTOR_SAVE"],
-      [Role.WITCH]: ["WITCH_KILL", "WITCH_SAVE"],
-      [Role.HUNTER]: ["HUNTER_SHOOT"],
-      [Role.VILLAGER]: [],
-    };
-
-    return validActions[role]?.includes(action) || false;
-  }
-
-  private async processVoteResults(gameId: string) {
-    // TODO: Implement vote counting and elimination logic
-    logger.info(`Processing vote results for game ${gameId}`);
-  }
-}
-
-// Add this method to game.repository.ts
-export async function findVotesForPhase(
-  gameId: string,
-  phase: GamePhase,
-  dayNumber: number,
-) {
-  return prisma.vote.findMany({
-    where: {
-      gameId,
-      phase,
-      dayNumber,
-    },
-  });
 }

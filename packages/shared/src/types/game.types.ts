@@ -11,6 +11,7 @@ export enum GamePhase {
   DISCUSSION = "DISCUSSION",
   VOTING = "VOTING",
   EXECUTION = "EXECUTION",
+  GAME_OVER = "GAME_OVER",
 }
 
 export enum Role {
@@ -20,6 +21,10 @@ export enum Role {
   DOCTOR = "DOCTOR",
   HUNTER = "HUNTER",
   WITCH = "WITCH",
+  CUPID = "CUPID",
+  LITTLE_GIRL = "LITTLE_GIRL",
+  THIEF = "THIEF",
+  SHERIFF = "SHERIFF",
 }
 
 export enum Side {
@@ -36,6 +41,9 @@ export enum ActionType {
   WITCH_KILL = "WITCH_KILL",
   WITCH_SAVE = "WITCH_SAVE",
   HUNTER_SHOOT = "HUNTER_SHOOT",
+  CUPID_LINK = "CUPID_LINK",
+  SHERIFF_REVEAL = "SHERIFF_REVEAL",
+  THIEF_CHOOSE = "THIEF_CHOOSE",
 }
 
 export enum EventType {
@@ -43,9 +51,73 @@ export enum EventType {
   PHASE_CHANGED = "PHASE_CHANGED",
   PLAYER_KILLED = "PLAYER_KILLED",
   PLAYER_VOTED = "PLAYER_VOTED",
+  PLAYER_JOINED = "PLAYER_JOINED",
+  HOST_CHANGED = "HOST_CHANGED",
+  PLAYER_LEFT = "PLAYER_LEFT",
   PLAYER_ELIMINATED = "PLAYER_ELIMINATED",
   ROLE_REVEALED = "ROLE_REVEALED",
+  LOVERS_REVEALED = "LOVERS_REVEALED",
+  POTION_USED = "POTION_USED",
   GAME_ENDED = "GAME_ENDED",
+  PLAYER_DISCONNECTED = "PLAYER_DISCONNECTED",
+  PLAYER_RECONNECTED = "PLAYER_RECONNECTED",
+}
+
+export enum EventVisibility {
+  PUBLIC = "PUBLIC",
+  PRIVATE = "PRIVATE",
+  ROLE = "ROLE",
+  DEAD = "DEAD",
+}
+
+export enum MessageType {
+  CHAT = "CHAT",
+  SYSTEM = "SYSTEM",
+  DEATH_MESSAGE = "DEATH_MESSAGE",
+  ROLE_ACTION = "ROLE_ACTION",
+}
+
+export interface RoleState {
+  id: string;
+  gameId: string;
+  playerId: string;
+  role: Role;
+  healPotionUsed: boolean;
+  poisonPotionUsed: boolean;
+  hasShot: boolean;
+  isLover: boolean;
+  customData?: Record<string, unknown>;
+}
+
+export interface GameTimer {
+  id: string;
+  gameId: string;
+  phase: GamePhase;
+  dayNumber: number;
+  startedAt: Date;
+  duration: number;
+  pausedAt?: Date;
+}
+
+export interface LoverPair {
+  id: string;
+  gameId: string;
+  player1Id: string;
+  player2Id: string;
+  createdAt: Date;
+}
+
+export interface ChatMessage {
+  id: string;
+  gameId: string;
+  playerId: string;
+  playerNickname: string;
+  content: string;
+  type: MessageType;
+  isAlive: boolean;
+  dayNumber: number;
+  phase: GamePhase;
+  createdAt: Date;
 }
 
 export interface GameSettings {
@@ -53,6 +125,7 @@ export interface GameSettings {
   maxPlayers: number;
   discussionTime: number;
   votingTime: number;
+  nightTime: number;
   roles: Record<Role, number>;
 }
 
@@ -70,6 +143,15 @@ export interface Game {
   createdAt: Date;
 }
 
+export interface PhaseEndResult {
+  newPhase: GamePhase;
+  dayNumber: number;
+  events: GameEvent[];
+  gameEnded: boolean;
+  winningSide?: Side;
+  winners?: string[]; // Player IDs
+}
+
 export interface GamePlayer {
   id: string;
   gameId: string;
@@ -79,6 +161,7 @@ export interface GamePlayer {
   role?: Role;
   isAlive: boolean;
   isHost: boolean;
+  disconnectedAt?: Date;
   joinedAt: Date;
 }
 
@@ -89,7 +172,19 @@ export interface Vote {
   targetId?: string;
   phase: GamePhase;
   dayNumber: number;
+  round: number;
   createdAt: Date;
+}
+
+export interface VoteResult {
+  vote: Vote;
+  allVoted: boolean;
+}
+
+export interface ActionResult {
+  action: GameAction;
+  actionResult?: Record<string, unknown>;
+  allActionsComplete: boolean;
 }
 
 export interface GameAction {
@@ -98,9 +193,11 @@ export interface GameAction {
   playerId: string;
   action: ActionType;
   targetId?: string;
+  secondaryTargetId?: string;
   phase: GamePhase;
   dayNumber: number;
   processed: boolean;
+  result?: Record<string, unknown>;
   createdAt: Date;
 }
 
@@ -109,6 +206,8 @@ export interface GameEvent {
   gameId: string;
   type: EventType;
   data: Record<string, unknown>;
+  visibility: EventVisibility;
+  visibleTo: string[];
   dayNumber: number;
   phase: GamePhase;
   createdAt: Date;
@@ -131,6 +230,11 @@ export interface GameStateForPlayer {
   phase: GamePhase;
   dayNumber: number;
   settings: GameSettings;
+  locale: string;
+  currentTimer?: {
+    startedAt: Date;
+    duration: number;
+  };
   players: Array<{
     id: string;
     userId: string;
@@ -138,6 +242,9 @@ export interface GameStateForPlayer {
     isHost: boolean;
     isAlive: boolean;
     playerNumber: number;
-    role?: Role;
+    isConnected: boolean;
+    role?: Role; // Only visible to the player themselves
   }>;
+  myRole?: Role;
+  myRoleState?: RoleState;
 }
