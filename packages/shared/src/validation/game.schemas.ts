@@ -14,6 +14,7 @@ const baseGameSettingsSchema = z.object({
   maxPlayers: z.number().min(MIN_PLAYERS).max(MAX_PLAYERS),
   discussionTime: z.number().min(MIN_DISCUSSION_TIME).max(MAX_DISCUSSION_TIME),
   votingTime: z.number().min(MIN_VOTING_TIME).max(MAX_VOTING_TIME),
+  nightTime: z.number().min(30).max(300),
   roles: z.record(z.nativeEnum(Role), z.number().min(0)),
 });
 

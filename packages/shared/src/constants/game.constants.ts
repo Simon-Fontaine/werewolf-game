@@ -5,6 +5,7 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   maxPlayers: 20,
   discussionTime: 180, // 3 minutes
   votingTime: 60, // 1 minute
+  nightTime: 30, // Add this line
   roles: {
     [Role.WEREWOLF]: 1,
     [Role.SEER]: 1,
@@ -12,6 +13,10 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
     [Role.HUNTER]: 0,
     [Role.WITCH]: 0,
     [Role.VILLAGER]: 3,
+    [Role.CUPID]: 0,
+    [Role.LITTLE_GIRL]: 0,
+    [Role.THIEF]: 0,
+    [Role.SHERIFF]: 0,
   },
 };
 
@@ -24,6 +29,8 @@ export const MIN_DISCUSSION_TIME = 30;
 export const MAX_DISCUSSION_TIME = 600;
 export const MIN_VOTING_TIME = 30;
 export const MAX_VOTING_TIME = 300;
+export const MIN_NIGHT_TIME = 30;
+export const MAX_NIGHT_TIME = 300;
 
 export const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 export const GUEST_REFRESH_TOKEN_EXPIRY_DAYS = 30;

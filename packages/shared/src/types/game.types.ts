@@ -61,6 +61,7 @@ export enum EventType {
   GAME_ENDED = "GAME_ENDED",
   PLAYER_DISCONNECTED = "PLAYER_DISCONNECTED",
   PLAYER_RECONNECTED = "PLAYER_RECONNECTED",
+  HUNTER_TRIGGERED = "HUNTER_TRIGGERED",
 }
 
 export enum EventVisibility {
@@ -221,6 +222,41 @@ export interface CreateGameRequest {
 
 export interface JoinGameRequest {
   code: string;
+}
+
+export interface NightActionResults {
+  events: GameEvent[];
+}
+
+export interface VoteResults {
+  events: GameEvent[];
+}
+
+export interface WinConditionCheck {
+  gameEnded: boolean;
+  winningSide?: Side;
+  winners?: string[];
+}
+
+export interface GameWithRelations {
+  id: string;
+  code: string;
+  status: GameStatus;
+  phase: GamePhase;
+  dayNumber: number;
+  settings: GameSettings;
+  locale: string;
+  winningSide?: Side;
+  startedAt?: Date;
+  endedAt?: Date;
+  createdAt: Date;
+  players: GamePlayer[];
+  events: GameEvent[];
+  votes: Vote[];
+  actions: GameAction[];
+  roleStates: RoleState[];
+  timers: GameTimer[];
+  loverPairs?: LoverPair[];
 }
 
 export interface GameStateForPlayer {

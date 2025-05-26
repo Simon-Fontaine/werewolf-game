@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { InputJsonValue } from "@prisma/client/runtime/library";
 import {
   type ActionResult,
   ActionType,
@@ -9,7 +9,6 @@ import {
   EventVisibility,
   GAME_CODE_CHARS,
   GAME_CODE_LENGTH,
-  type Game,
   type GameAction,
   GameError,
   type GameEvent,
@@ -17,7 +16,9 @@ import {
   type GamePlayer,
   type GameSettings,
   GameStatus,
+  type GameWithRelations,
   MessageType,
+  type NightActionResults,
   type PhaseEndResult,
   Role,
   type RoleState,
@@ -25,9 +26,14 @@ import {
   ValidationError,
   type Vote,
   type VoteResult,
+  type VoteResults,
+  type WinConditionCheck,
 } from "@werewolf/shared";
 import { logger } from "../../common/utils/logger";
-import { prisma } from "../../common/utils/prisma";
+import {
+  type PrismaTransactionClient,
+  prisma,
+} from "../../common/utils/prisma";
 import { gameRepository } from "./game.repository";
 
 export class GameService {
@@ -36,11 +42,15 @@ export class GameService {
     hostNickname: string,
     input: CreateGameInput,
   ) {
-    const settings = {
+    const settings: GameSettings = {
       ...DEFAULT_GAME_SETTINGS,
       ...input.settings,
-      nightTime: 30, // Add default night time
-    } as GameSettings & { nightTime: number };
+      nightTime: input.settings?.nightTime || 30,
+      roles: {
+        ...DEFAULT_GAME_SETTINGS.roles,
+        ...input.settings?.roles,
+      } as Record<Role, number>,
+    };
 
     this.validateGameSettings(settings);
 
@@ -270,7 +280,7 @@ export class GameService {
           gameId: game.id,
           phase: GamePhase.NIGHT,
           dayNumber: 1,
-          duration: settings.nightTime || 30,
+          duration: settings.nightTime,
         },
         tx,
       );
@@ -288,7 +298,7 @@ export class GameService {
                 acc[role] = (acc[role] || 0) + 1;
                 return acc;
               },
-              {} as Record<string, number>,
+              {} as Record<Role, number>,
             ),
           },
         },
@@ -343,7 +353,7 @@ export class GameService {
     if (existingVote) {
       // Update existing vote
       vote = (await gameRepository.updateVote(existingVote.id, {
-        target: targetId ? { connect: { id: targetId } } : undefined,
+        target: targetId ? { connect: { id: targetId } } : { disconnect: true },
       })) as Vote;
     } else {
       // Create new vote
@@ -378,7 +388,9 @@ export class GameService {
     targetId: string,
     secondaryTargetId?: string,
   ): Promise<ActionResult> {
-    const game = await gameRepository.findByIdWithRelations(gameId);
+    const game = (await gameRepository.findByIdWithRelations(
+      gameId,
+    )) as GameWithRelations | null;
     if (!game) {
       throw new GameError(ErrorCode.GAME_NOT_FOUND, "Game not found");
     }
@@ -398,7 +410,9 @@ export class GameService {
     }
 
     // Get role state
-    const roleState = game.roleStates.find((rs) => rs.playerId === player.id);
+    const roleState = game.roleStates.find((rs) => rs.playerId === player.id) as
+      | RoleState
+      | undefined;
     if (!roleState) {
       throw new ValidationError("Role state not found");
     }
@@ -407,7 +421,9 @@ export class GameService {
     this.validateActionAvailable(roleState, action);
 
     // Validate targets
-    const target = game.players.find((p) => p.id === targetId);
+    const target = game.players.find((p) => p.id === targetId) as
+      | GamePlayer
+      | undefined;
     if (!target || !target.isAlive) {
       throw new ValidationError("Invalid target");
     }
@@ -437,7 +453,7 @@ export class GameService {
     }
 
     // Create action
-    const gameAction = (await gameRepository.createAction({
+    const gameAction = await gameRepository.createAction({
       game: { connect: { id: game.id } },
       player: { connect: { id: player.id } },
       action,
@@ -445,7 +461,7 @@ export class GameService {
       secondaryTargetId,
       phase: game.phase,
       dayNumber: game.dayNumber,
-    })) as GameAction;
+    });
 
     // Get action result based on role
     const actionResult = await this.getActionResult(
@@ -459,14 +475,16 @@ export class GameService {
     const allActionsComplete = await this.checkAllNightActionsComplete(game);
 
     return {
-      action: gameAction,
+      action: gameAction as GameAction,
       actionResult,
       allActionsComplete,
     };
   }
 
   async processPhaseEnd(gameId: string): Promise<PhaseEndResult> {
-    const game = await gameRepository.findByIdWithRelations(gameId);
+    const game = (await gameRepository.findByIdWithRelations(
+      gameId,
+    )) as GameWithRelations | null;
     if (!game) {
       throw new GameError(ErrorCode.GAME_NOT_FOUND, "Game not found");
     }
@@ -554,7 +572,7 @@ export class GameService {
         ? settings.discussionTime
         : newPhase === GamePhase.VOTING
           ? settings.votingTime
-          : settings.nightTime || 30;
+          : settings.nightTime;
 
     await gameRepository.createTimer({
       gameId: game.id,
@@ -795,7 +813,7 @@ export class GameService {
     role: Role,
     action: ActionType,
     target: GamePlayer,
-    game: Game,
+    game: GameWithRelations,
   ): Promise<Record<string, unknown>> {
     switch (action) {
       case ActionType.SEER_CHECK:
@@ -814,12 +832,14 @@ export class GameService {
     }
   }
 
-  private async checkAllNightActionsComplete(game: any): Promise<boolean> {
+  private async checkAllNightActionsComplete(
+    game: GameWithRelations,
+  ): Promise<boolean> {
     const aliveWerewolves = game.players.filter(
-      (p: any) => p.isAlive && p.role === Role.WEREWOLF,
+      (p) => p.isAlive && p.role === Role.WEREWOLF,
     );
     const werewolfActions = game.actions.filter(
-      (a: any) =>
+      (a) =>
         a.dayNumber === game.dayNumber &&
         a.phase === GamePhase.NIGHT &&
         a.action === ActionType.WEREWOLF_KILL &&
@@ -833,12 +853,10 @@ export class GameService {
     // Check other roles that must act
     const requiredRoles = [Role.SEER, Role.DOCTOR];
     for (const role of requiredRoles) {
-      const player = game.players.find(
-        (p: any) => p.isAlive && p.role === role,
-      );
+      const player = game.players.find((p) => p.isAlive && p.role === role);
       if (player) {
         const hasActed = game.actions.some(
-          (a: any) =>
+          (a) =>
             a.playerId === player.id &&
             a.dayNumber === game.dayNumber &&
             a.phase === GamePhase.NIGHT &&
@@ -851,10 +869,12 @@ export class GameService {
     return true;
   }
 
-  private async processNightActions(game: any) {
-    const events: any[] = [];
+  private async processNightActions(
+    game: GameWithRelations,
+  ): Promise<NightActionResults> {
+    const events: GameEvent[] = [];
     const nightActions = game.actions.filter(
-      (a: any) =>
+      (a) =>
         a.dayNumber === game.dayNumber &&
         a.phase === GamePhase.NIGHT &&
         !a.processed,
@@ -882,11 +902,14 @@ export class GameService {
           if (action.targetId) {
             saved.push(action.targetId);
             // Update role state
-            await gameRepository.updateRoleState(
-              game.roleStates.find((rs: any) => rs.playerId === action.playerId)
-                .id,
-              { healPotionUsed: true },
+            const roleState = game.roleStates.find(
+              (rs) => rs.playerId === action.playerId,
             );
+            if (roleState) {
+              await gameRepository.updateRoleState(roleState.id, {
+                healPotionUsed: true,
+              });
+            }
           }
           break;
 
@@ -894,11 +917,14 @@ export class GameService {
           if (action.targetId) {
             killed.push(action.targetId);
             // Update role state
-            await gameRepository.updateRoleState(
-              game.roleStates.find((rs: any) => rs.playerId === action.playerId)
-                .id,
-              { poisonPotionUsed: true },
+            const roleState = game.roleStates.find(
+              (rs) => rs.playerId === action.playerId,
             );
+            if (roleState) {
+              await gameRepository.updateRoleState(roleState.id, {
+                poisonPotionUsed: true,
+              });
+            }
           }
           break;
       }
@@ -914,49 +940,64 @@ export class GameService {
     for (const playerId of actuallyKilled) {
       await gameRepository.updatePlayer(playerId, { isAlive: false });
 
-      const player = game.players.find((p: any) => p.id === playerId);
-      events.push({
-        type: EventType.PLAYER_KILLED,
-        visibility: EventVisibility.PUBLIC,
-        data: {
-          playerId,
-          playerName: player.nickname,
-          causeOfDeath: "werewolf",
-        },
-      });
-
-      // Check if killed player was a lover
-      const loverPair = await gameRepository.findLoverPair(playerId);
-      if (loverPair) {
-        // Kill the other lover too
-        const otherLoverId =
-          loverPair.player1Id === playerId
-            ? loverPair.player2Id
-            : loverPair.player1Id;
-
-        await gameRepository.updatePlayer(otherLoverId, { isAlive: false });
-
-        const otherLover = game.players.find((p: any) => p.id === otherLoverId);
+      const player = game.players.find((p) => p.id === playerId);
+      if (player) {
         events.push({
+          id: `event-${Date.now()}-${Math.random()}`,
+          gameId: game.id,
           type: EventType.PLAYER_KILLED,
           visibility: EventVisibility.PUBLIC,
+          visibleTo: [],
           data: {
-            playerId: otherLoverId,
-            playerName: otherLover.nickname,
-            causeOfDeath: "heartbreak",
+            playerId,
+            playerName: player.nickname,
+            causeOfDeath: "werewolf",
           },
+          dayNumber: game.dayNumber,
+          phase: game.phase,
+          createdAt: new Date(),
         });
+
+        // Check if killed player was a lover
+        const loverPair = await gameRepository.findLoverPair(playerId);
+        if (loverPair) {
+          // Kill the other lover too
+          const otherLoverId =
+            loverPair.player1Id === playerId
+              ? loverPair.player2Id
+              : loverPair.player1Id;
+
+          await gameRepository.updatePlayer(otherLoverId, { isAlive: false });
+
+          const otherLover = game.players.find((p) => p.id === otherLoverId);
+          if (otherLover) {
+            events.push({
+              id: `event-${Date.now()}-${Math.random()}`,
+              gameId: game.id,
+              type: EventType.PLAYER_KILLED,
+              visibility: EventVisibility.PUBLIC,
+              visibleTo: [],
+              data: {
+                playerId: otherLoverId,
+                playerName: otherLover.nickname,
+                causeOfDeath: "heartbreak",
+              },
+              dayNumber: game.dayNumber,
+              phase: game.phase,
+              createdAt: new Date(),
+            });
+          }
+        }
       }
     }
 
     return { events };
   }
 
-  private async processVotes(game: any) {
-    const events: any[] = [];
+  private async processVotes(game: GameWithRelations): Promise<VoteResults> {
+    const events: GameEvent[] = [];
     const votes = game.votes.filter(
-      (v: any) =>
-        v.dayNumber === game.dayNumber && v.phase === GamePhase.VOTING,
+      (v) => v.dayNumber === game.dayNumber && v.phase === GamePhase.VOTING,
     );
 
     // Count votes
@@ -985,75 +1026,95 @@ export class GameService {
       const playerId = eliminated[0];
       await gameRepository.updatePlayer(playerId, { isAlive: false });
 
-      const player = game.players.find((p: any) => p.id === playerId);
-      events.push({
-        type: EventType.PLAYER_ELIMINATED,
-        visibility: EventVisibility.PUBLIC,
-        data: {
-          playerId,
-          playerName: player.nickname,
-          voteCount: maxVotes,
-        },
-      });
-
-      // Handle special death effects
-      if (player.role === Role.HUNTER && !player.hasShot) {
-        // Hunter can shoot someone
+      const player = game.players.find((p) => p.id === playerId);
+      if (player) {
         events.push({
-          type: EventType.HUNTER_TRIGGERED,
-          visibility: EventVisibility.PRIVATE,
-          visibleTo: [player.userId],
-          data: {
-            message: "You can now shoot someone",
-          },
-        });
-      }
-
-      // Check for lover death
-      const loverPair = await gameRepository.findLoverPair(playerId);
-      if (loverPair) {
-        const otherLoverId =
-          loverPair.player1Id === playerId
-            ? loverPair.player2Id
-            : loverPair.player1Id;
-
-        await gameRepository.updatePlayer(otherLoverId, { isAlive: false });
-
-        const otherLover = game.players.find((p: any) => p.id === otherLoverId);
-        events.push({
-          type: EventType.PLAYER_KILLED,
+          id: `event-${Date.now()}-${Math.random()}`,
+          gameId: game.id,
+          type: EventType.PLAYER_ELIMINATED,
           visibility: EventVisibility.PUBLIC,
+          visibleTo: [],
           data: {
-            playerId: otherLoverId,
-            playerName: otherLover.nickname,
-            causeOfDeath: "heartbreak",
+            playerId,
+            playerName: player.nickname,
+            voteCount: maxVotes,
           },
+          dayNumber: game.dayNumber,
+          phase: game.phase,
+          createdAt: new Date(),
         });
+
+        // Handle special death effects
+        if (player.role === Role.HUNTER) {
+          const roleState = game.roleStates.find(
+            (rs) => rs.playerId === player.id,
+          );
+          if (roleState && !roleState.hasShot) {
+            // Hunter can shoot someone
+            events.push({
+              id: `event-${Date.now()}-${Math.random()}`,
+              gameId: game.id,
+              type: EventType.HUNTER_TRIGGERED,
+              visibility: EventVisibility.PRIVATE,
+              visibleTo: [player.userId],
+              data: {
+                message: "You can now shoot someone",
+              },
+              dayNumber: game.dayNumber,
+              phase: game.phase,
+              createdAt: new Date(),
+            });
+          }
+        }
+
+        // Check for lover death
+        const loverPair = await gameRepository.findLoverPair(playerId);
+        if (loverPair) {
+          const otherLoverId =
+            loverPair.player1Id === playerId
+              ? loverPair.player2Id
+              : loverPair.player1Id;
+
+          await gameRepository.updatePlayer(otherLoverId, { isAlive: false });
+
+          const otherLover = game.players.find((p) => p.id === otherLoverId);
+          if (otherLover) {
+            events.push({
+              id: `event-${Date.now()}-${Math.random()}`,
+              gameId: game.id,
+              type: EventType.PLAYER_KILLED,
+              visibility: EventVisibility.PUBLIC,
+              visibleTo: [],
+              data: {
+                playerId: otherLoverId,
+                playerName: otherLover.nickname,
+                causeOfDeath: "heartbreak",
+              },
+              dayNumber: game.dayNumber,
+              phase: game.phase,
+              createdAt: new Date(),
+            });
+          }
+        }
       }
     }
 
     return { events };
   }
 
-  private checkWinConditions(game: any): {
-    gameEnded: boolean;
-    winningSide?: Side;
-    winners?: string[];
-  } {
-    const alivePlayers = game.players.filter((p: any) => p.isAlive);
+  private checkWinConditions(game: GameWithRelations): WinConditionCheck {
+    const alivePlayers = game.players.filter((p) => p.isAlive);
     const aliveWerewolves = alivePlayers.filter(
-      (p: any) => p.role === Role.WEREWOLF,
+      (p) => p.role === Role.WEREWOLF,
     );
-    const aliveVillagers = alivePlayers.filter(
-      (p: any) => p.role !== Role.WEREWOLF,
-    );
+    const aliveVillagers = alivePlayers.filter((p) => p.role !== Role.WEREWOLF);
 
     // Check if all werewolves are dead
     if (aliveWerewolves.length === 0) {
       return {
         gameEnded: true,
         winningSide: Side.VILLAGE,
-        winners: aliveVillagers.map((p: any) => p.userId),
+        winners: aliveVillagers.map((p) => p.userId),
       };
     }
 
@@ -1062,7 +1123,7 @@ export class GameService {
       return {
         gameEnded: true,
         winningSide: Side.WEREWOLF,
-        winners: aliveWerewolves.map((p: any) => p.userId),
+        winners: aliveWerewolves.map((p) => p.userId),
       };
     }
 
@@ -1071,10 +1132,10 @@ export class GameService {
       const loverPair = game.loverPairs?.[0];
       if (loverPair) {
         const lover1Alive = alivePlayers.some(
-          (p: any) => p.id === loverPair.player1Id,
+          (p) => p.id === loverPair.player1Id,
         );
         const lover2Alive = alivePlayers.some(
-          (p: any) => p.id === loverPair.player2Id,
+          (p) => p.id === loverPair.player2Id,
         );
 
         if (lover1Alive && lover2Alive) {
@@ -1082,11 +1143,9 @@ export class GameService {
             gameEnded: true,
             winningSide: Side.LOVERS,
             winners: [
-              alivePlayers.find((p: any) => p.id === loverPair.player1Id)
-                .userId,
-              alivePlayers.find((p: any) => p.id === loverPair.player2Id)
-                .userId,
-            ],
+              alivePlayers.find((p) => p.id === loverPair.player1Id)?.userId,
+              alivePlayers.find((p) => p.id === loverPair.player2Id)?.userId,
+            ].filter(Boolean) as string[],
           };
         }
       }
@@ -1103,7 +1162,7 @@ export class GameService {
       data: Record<string, unknown>;
       visibleTo?: string[];
     },
-    tx?: any,
+    tx?: PrismaTransactionClient,
   ) {
     const game = await gameRepository.findById(gameId);
     if (!game) return;
@@ -1114,7 +1173,7 @@ export class GameService {
         type: eventData.type,
         visibility: eventData.visibility,
         visibleTo: eventData.visibleTo || [],
-        data: eventData.data,
+        data: eventData.data as InputJsonValue,
         dayNumber: game.dayNumber,
         phase: game.phase,
       },
